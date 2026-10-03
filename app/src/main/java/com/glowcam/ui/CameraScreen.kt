@@ -251,6 +251,7 @@ fun CameraScreen(
 
     LaunchedEffect(params, compare) { engine.setParams(if (compare) EffectParams() else params) }
     LaunchedEffect(settings.mirrorSelfie.value) { engine.mirrorSelfie = settings.mirrorSelfie.value }
+    LaunchedEffect(settings.shutterLevel.value) { engine.soundLevel = settings.shutterLevel.value }
     LaunchedEffect(settings.showHistogram.value) { engine.wantHistogram = settings.showHistogram.value }
     LaunchedEffect(front, aspect.wide, sharp, maxRes, mode, settings.videoRes.value, settings.videoFps.value) {
         engine.mirrorSelfie = settings.mirrorSelfie.value
@@ -364,7 +365,7 @@ fun CameraScreen(
             val full = maxRes && !front
             val night = shootMode == ShootMode.NIGHT
             val shots = if (sharp && !(flash && !front) && !full && !night) DeviceProfile.burstShots(context) else 1
-            val sound = settings.shutterSound.value
+            val sound = true
             if (sharp || night) {
                 val ok = if (night) motion.awaitSteady(2200, 0.08f) else motion.awaitSteady()
                 if (!ok) say("Hold steady for a sharper photo")

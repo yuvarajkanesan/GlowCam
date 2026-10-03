@@ -107,7 +107,7 @@ fun SettingsScreen(settings: AppSettings, onBack: () -> Unit) {
         ) {
             Section("CAMERA") {
                 SettingSwitch("Mirror selfie", "Selfies look like your reflection", settings.mirrorSelfie.value) { settings.mirrorSelfie.set(it) }
-                SettingSwitch("Shutter sound", null, settings.shutterSound.value) { settings.shutterSound.set(it) }
+                ChoiceRow("Camera sound", listOf("Off" to 0, "Soft" to 1, "Normal" to 2), settings.shutterLevel.value) { settings.shutterLevel.set(it) }
                 SettingSwitch("Volume keys take photos", "Press volume up or down as the shutter", settings.volumeShutter.value) { settings.volumeShutter.set(it) }
                 SettingSwitch("Touch to shoot", "Tap the viewfinder to take a photo", settings.touchShoot.value) { settings.touchShoot.set(it) }
                 SettingSwitch("Sharp mode", "Waits until you're steady and keeps the sharpest of 3 shots", settings.sharp.value) { settings.sharp.set(it) }

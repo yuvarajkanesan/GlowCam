@@ -78,3 +78,6 @@ $RECYCLE.BIN/
 *.bak
 *.swp
 *~
+
+# Release outputs (large, rebuildable; keep mapping.txt for crash decoding)
+release-artifacts/

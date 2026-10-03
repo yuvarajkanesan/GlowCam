@@ -46,6 +46,8 @@ object ImageLoad {
         }
     } catch (e: Exception) {
         null
+    } catch (e: OutOfMemoryError) {
+        null
     }
 
     fun videoFrame(context: Context, uri: Uri, maxSide: Int): Bitmap? = try {

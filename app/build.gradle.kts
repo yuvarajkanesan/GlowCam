@@ -25,6 +25,9 @@ android {
     signingConfigs {
         if (keystoreFile.exists()) {
             create("release") {
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
                 storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
@@ -35,8 +38,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Shrinking and obfuscation are on by default. Debug a release-only problem with: -PminifyRelease=false
+            val minify = (project.findProperty("minifyRelease") as String?) != "false"
+            isMinifyEnabled = minify
+            isShrinkResources = minify
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystoreFile.exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }

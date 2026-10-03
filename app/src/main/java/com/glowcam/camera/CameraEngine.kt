@@ -9,7 +9,6 @@ import android.graphics.Matrix
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
-import android.media.MediaActionSound
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -75,7 +74,10 @@ class CameraEngine(private val context: Context) {
 
     private val bg = Executors.newSingleThreadExecutor()
     private val analysisExecutor = Executors.newSingleThreadExecutor()
-    private val shutter = MediaActionSound()
+    private val sounds = ShutterSound(context)
+
+    /** 0 off, 1 soft, 2 normal. Set from the settings screen. */
+    @Volatile var soundLevel = 1
 
     private var provider: ProcessCameraProvider? = null
     private var camera: Camera? = null
@@ -374,7 +376,7 @@ class CameraEngine(private val context: Context) {
             cont.resume(null); return@suspendCoroutine
         }
         capture.flashMode = if (rearFlash && !front) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
-        if (playSound) shutter.play(MediaActionSound.SHUTTER_CLICK)
+        if (playSound) sounds.photo(soundLevel)
         val values = MediaSaver.imageValues(pending = false)
         val options = ImageCapture.OutputFileOptions.Builder(
             context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values,
@@ -420,7 +422,7 @@ class CameraEngine(private val context: Context) {
             cont.resume(null); return@suspendCoroutine
         }
         capture.flashMode = if (rearFlash && !front) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
-        if (playSound) shutter.play(MediaActionSound.SHUTTER_CLICK)
+        if (playSound) sounds.photo(soundLevel)
         capture.takePicture(bg, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 val result = try {
@@ -452,20 +454,16 @@ class CameraEngine(private val context: Context) {
         val surface = rec.start()
         recorder = rec
         renderer.startRecording(surface, width, height, rec.t0)
-        shutter.play(MediaActionSound.START_VIDEO_RECORDING)
+        sounds.videoStart(soundLevel)
     }
 
     fun stopVideo(onDone: (Uri?) -> Unit) {
         val rec = recorder ?: return onDone(null)
         recorder = null
-        shutter.play(MediaActionSound.STOP_VIDEO_RECORDING)
+        sounds.videoStop(soundLevel)
         renderer.stopRecording {
             Thread { onDone(rec.stop()) }.start()
         }
-    }
-
-    fun playShutter(enabled: Boolean) {
-        if (enabled) shutter.play(MediaActionSound.SHUTTER_CLICK)
     }
 
     fun release() {
@@ -475,7 +473,7 @@ class CameraEngine(private val context: Context) {
         renderer.release()
         tracker.close()
         segmenter.close()
-        shutter.release()
+        sounds.release()
         bg.shutdown()
         analysisExecutor.shutdown()
     }

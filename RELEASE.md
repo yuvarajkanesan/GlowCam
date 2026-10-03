@@ -9,6 +9,14 @@
 
 The release build uses R8 (code shrinking) and resource shrinking. Current size: about 46 MB. The app targets Android 16 (API 36), which Google Play requires for new apps and updates, and its native libraries are 16 KB page aligned.
 
+## Current release (1.0.0)
+
+- Signed with `glowcam-release.jks` (project root, git-ignored) using the passwords in `keystore.properties` (git-ignored). **Back both files up outside this computer.**
+- Output copies live in `release-artifacts/1.0.0/`: `GlowCam-1.0.0.apk` (sideload / phone), `GlowCam-1.0.0.aab` (Google Play), `mapping.txt` (to decode crash traces; keep it for every released version).
+- Recommended for Play: enrol in **Play App Signing**. Google then keeps the real app-signing key and this keystore becomes only your upload key, which Google can reset if you lose it.
+- To publish: create the app in Play Console, upload the `.aab`, complete the listing (`STORE_LISTING.md`) and data-safety form, then roll out to closed testing first.
+- Switch minification off only to debug a release-only problem: `./gradlew.bat assembleRelease -PminifyRelease=false`.
+
 ## Signing (do this once before publishing)
 
 Without a keystore the release build is signed with the debug key, which is fine for testing but **not accepted by Google Play**.

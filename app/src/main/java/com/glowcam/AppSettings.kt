@@ -34,7 +34,8 @@ class AppSettings(context: Context) {
 
     val front = BoolPref(p, "front", false)             // remember last camera
     val mirrorSelfie = BoolPref(p, "mirror", true)
-    val shutterSound = BoolPref(p, "sound", true)
+    /** Camera sound: 0 off, 1 soft (default), 2 normal system sound. */
+    val shutterLevel = IntPref(p, "shutter_level", if (p.getBoolean("sound", true)) 1 else 0)
     val volumeShutter = BoolPref(p, "volume_shutter", true)
     val locationTag = BoolPref(p, "location_tag", false)
     val sharp = BoolPref(p, "sharp", true)

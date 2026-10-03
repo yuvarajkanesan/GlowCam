@@ -80,13 +80,15 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val i = intent ?: return
-        incoming = when (i.action) {
+        val candidate = when (i.action) {
             Intent.ACTION_VIEW -> i.data
             Intent.ACTION_SEND ->
                 if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 else @Suppress("DEPRECATION") i.getParcelableExtra(Intent.EXTRA_STREAM)
             else -> null
         }
+        // Another app can only hand us a content:// image; file:// and anything else is ignored.
+        incoming = candidate?.takeIf { it.scheme == "content" }
     }
 }
 
