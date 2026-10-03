@@ -4,6 +4,15 @@ Run this on the release build (`app-release.apk`) before every store submission.
 
 Mark each: PASS / FAIL / N/A.
 
+## Old and low-end devices
+- [ ] Android 9 or older: the app asks for storage access; photos and videos save to Pictures/GlowCam and Movies/GlowCam and appear in the Gallery
+- [ ] Android 7 or older: video records and plays back
+- [ ] Android 5 to 7: the launcher icon shows correctly
+- [ ] Phone with under 3 GB RAM: preview stays smooth, Sharp mode takes one shot, no out-of-memory crash when saving or editing a 12 MP photo
+- [ ] Phone with a budget GPU (Mali-G52 / PowerVR / Adreno 5xx): live effects compile and run (no black preview)
+- [ ] Phone with only a legacy-level camera: preview and photos work (a message says face effects are off)
+- [ ] Tablet or foldable: app opens, stays portrait, nothing is cut off
+
 ## First launch and permissions
 - [ ] Fresh install shows the friendly camera-permission screen
 - [ ] Deny camera: screen offers "Allow camera" and "Open app settings"; both work

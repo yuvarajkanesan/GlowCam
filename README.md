@@ -3,7 +3,7 @@
 A live beauty camera for Android: real-time face retouching, makeup, filters, subject-aware effects, pro camera controls, photo editor, collage maker, and one-tap sharing. Fully on-device; the app has no internet permission.
 
 - **Package:** `com.glowcam`
-- **Android:** 8.0+ (API 26), targets Android 16 (API 36)
+- **Android:** 5.0+ (API 21) up to Android 16 (API 36); phones and tablets, 64-bit and 32-bit
 - **Stack:** Kotlin, Jetpack Compose, CameraX, OpenGL ES 3.0, ML Kit (face mesh + selfie segmentation, bundled models)
 
 ## Build and run

@@ -103,6 +103,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.glowcam.AppSettings
+import com.glowcam.DeviceProfile
 import com.glowcam.camera.CameraCaps
 import com.glowcam.camera.CameraEngine
 import com.glowcam.camera.LocationTagger
@@ -155,6 +156,7 @@ fun CameraScreen(
     val camLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { camGranted = it }
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { micGranted = it }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) onImport(uri) }
+    val storageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     LaunchedEffect(Unit) { if (!camGranted) camLauncher.launch(Manifest.permission.CAMERA) }
 
@@ -226,6 +228,14 @@ fun CameraScreen(
     var hist by remember { mutableStateOf(IntArray(64)) }
 
     fun say(s: String) { message = s }
+    /** Android 9 and older: saving to Pictures / Movies needs the storage permission. */
+    fun ensureStorage(): Boolean {
+        if (MediaSaver.hasStorageAccess(context)) return true
+        storageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        say("Allow storage access so GlowCam can save your photos and videos")
+        return false
+    }
+    LaunchedEffect(camGranted) { if (camGranted) ensureStorage() }
     var fatalError by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(2500)
@@ -253,6 +263,7 @@ fun CameraScreen(
             return@LaunchedEffect
         }
         caps = engine.caps
+        if (!engine.analysisAvailable) say("This camera can't track faces, so beauty effects are off here.")
         zoom = 1f
         zoomMin = engine.zoomRange.start
         zoomMax = engine.zoomRange.endInclusive
@@ -343,7 +354,7 @@ fun CameraScreen(
     }
 
     suspend fun doCapture() {
-        if (busy) return
+        if (busy || !ensureStorage()) return
         busy = true
         try {
             val useGlow = front && flash
@@ -352,7 +363,7 @@ fun CameraScreen(
             }
             val full = maxRes && !front
             val night = shootMode == ShootMode.NIGHT
-            val shots = if (sharp && !(flash && !front) && !full && !night) 3 else 1
+            val shots = if (sharp && !(flash && !front) && !full && !night) DeviceProfile.burstShots(context) else 1
             val sound = settings.shutterSound.value
             if (sharp || night) {
                 val ok = if (night) motion.awaitSteady(2200, 0.08f) else motion.awaitSteady()
@@ -388,7 +399,7 @@ fun CameraScreen(
             val faces = if (p.needsFaces) engine.tracker.detect(bmp) else emptyList()
             val subject = if (p.needsMask) engine.segmenter.segment(bmp) else null
             // no effects active: keep the camera's original pixels untouched
-            val out = if (p.isIdentity) bmp else OfflineRenderer.render(bmp, p, faces, 4096, subject)
+            val out = if (p.isIdentity) bmp else OfflineRenderer.render(bmp, p, faces, DeviceProfile.maxPhotoSide(context), subject)
             val uri = withContext(Dispatchers.IO) {
                 MediaSaver.saveJpeg(context, out, quality).also { if (settings.locationTag.value) LocationTagger.tag(context, it) }
             }
@@ -417,6 +428,7 @@ fun CameraScreen(
     }
 
     fun startRecording() {
+        if (!ensureStorage()) return
         try {
             val (vw, vh) = videoSize()
             engine.startVideo(vw, vh, micGranted, settings.videoFps.value)

@@ -63,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.glowcam.DeviceProfile
 import com.glowcam.camera.MediaSaver
 import com.glowcam.face.FaceLandmarks
 import com.glowcam.face.FaceTracker
@@ -156,7 +157,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
     }
 
     LaunchedEffect(uri) {
-        original = withContext(Dispatchers.IO) { ImageLoad.loadBitmap(context, uri, 4096) }
+        original = withContext(Dispatchers.IO) { ImageLoad.loadBitmap(context, uri, DeviceProfile.maxEditSide(context)) }
         if (original == null) {
             Toast.makeText(context, "Could not open this image", Toast.LENGTH_SHORT).show()
             onClose()
@@ -212,7 +213,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
         scope.launch {
             try {
                 val subject = if (params.needsMask) (mask ?: segmenter.segment(s)) else null
-                val rendered = OfflineRenderer.render(s, params, faces, maxSide, subject)
+                val rendered = OfflineRenderer.render(s, params, faces, minOf(maxSide, DeviceProfile.maxPhotoSide(context)), subject)
                 val out = withContext(Dispatchers.Default) { drawOverlays(rendered, overlays) }
                 val saved = withContext(Dispatchers.IO) { MediaSaver.saveJpeg(context, out, 97) }
                 onSaved(saved)
@@ -287,7 +288,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                                 val ny = (off.y - imgRect.top) / imgRect.height
                                 if (nx in 0f..1f && ny in 0f..1f) {
                                     val (sx, sy) = tapToSource(nx, ny)
-                                    if (params.blemishes.size < 16) {
+                                    if (params.blemishes.size < 10) {
                                         params = params.copy(blemishes = params.blemishes + Blemish(sx, sy, brush * params.crop.h.coerceAtLeast(0.2f)))
                                         commit()
                                     }
@@ -395,7 +396,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                         when (retouch) {
                             RetouchTool.BLEMISH -> {
                                 Text(
-                                    "Tap a spot on the photo to remove it (${params.blemishes.size}/16).",
+                                    "Tap a spot on the photo to remove it (${params.blemishes.size}/10).",
                                     color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp),
                                 )
                                 LabeledSlider("Brush size", brush, { brush = it }, range = 0.01f..0.08f, display = { (it * 1000).toInt().toString() })

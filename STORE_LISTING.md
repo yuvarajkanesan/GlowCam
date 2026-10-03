@@ -6,6 +6,7 @@ Ready to paste into Play Console. Graphics are in `store/`.
 - **App name (max 30):** GlowCam: Beauty Camera
 - **Short description (max 80):** Live beauty camera with filters, makeup, pro controls and a photo editor.
 - **Category:** Photography
+- **Supports:** Android 5.0 and up, phones and tablets (portrait)
 - **Tags:** Camera, Photo editor, Selfie, Beauty, Filters
 - **Content rating:** Everyone (no violence, no user-generated content shared inside the app)
 - **Contact email / privacy policy URL:** add yours (publish `PRIVACY.md` at a public URL)

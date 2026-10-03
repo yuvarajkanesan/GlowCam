@@ -50,6 +50,6 @@ class AppSettings(context: Context) {
     val photoQuality = IntPref(p, "photo_quality", 97)
 
     /** Video height class: 720, 1080 or 2160 (4K). */
-    val videoRes = IntPref(p, "video_res", 1080)
+    val videoRes = IntPref(p, "video_res", DeviceProfile.defaultVideoRes(context))
     val videoFps = IntPref(p, "video_fps", 30)
 }

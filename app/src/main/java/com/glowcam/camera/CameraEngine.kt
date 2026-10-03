@@ -35,6 +35,7 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.glowcam.DeviceProfile
 import com.glowcam.face.FaceTracker
 import com.glowcam.face.SubjectSegmenter
 import com.glowcam.gl.EffectParams
@@ -62,7 +63,13 @@ data class CameraCaps(
 /** Wires CameraX (preview, capture, analysis) to the GL renderer, face tracker and camera controls. */
 @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
 class CameraEngine(private val context: Context) {
-    val renderer = LiveRenderer()
+    val renderer = LiveRenderer().also { it.lod = DeviceProfile.lod(context) }
+    private val analysisEvery = DeviceProfile.analysisEvery(context)
+    private var analysisCount = 0
+
+    /** False when this camera cannot run face / person analysis next to preview and capture. */
+    @Volatile var analysisAvailable = true
+        private set
     val tracker = FaceTracker()
     val segmenter = SubjectSegmenter()
 
@@ -189,6 +196,11 @@ class CameraEngine(private val context: Context) {
                 img.close()
                 return@setAnalyzer
             }
+            // weak phones analyse every 3rd frame to keep the preview smooth
+            if (analysisEvery > 1 && analysisCount++ % analysisEvery != 0) {
+                img.close()
+                return@setAnalyzer
+            }
             // close the frame once every detector that uses it has finished
             val pending = AtomicInteger((if (wantFaces) 1 else 0) + (if (wantMask) 1 else 0))
             val done = { if (pending.decrementAndGet() == 0) img.close() }
@@ -198,7 +210,15 @@ class CameraEngine(private val context: Context) {
         }
 
         val selector = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
-        camera = p.bindToLifecycle(owner, selector, preview, capture, analysis)
+        analysisAvailable = true
+        camera = try {
+            p.bindToLifecycle(owner, selector, preview, capture, analysis)
+        } catch (e: IllegalArgumentException) {
+            // Older cameras cannot run preview + capture + analysis together: drop face analysis, keep the camera.
+            p.unbindAll()
+            analysisAvailable = false
+            p.bindToLifecycle(owner, selector, preview, capture)
+        }
     }
 
     // ---------------- capabilities ----------------
@@ -287,7 +307,11 @@ class CameraEngine(private val context: Context) {
                 ShootMode.AUTO -> {}
             }
         }
-        Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(b.build())
+        try {
+            Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(b.build())
+        } catch (e: Exception) {
+            android.util.Log.w("CameraEngine", "Camera does not accept these shooting options", e)
+        }
         applyEv()
     }
 
@@ -351,11 +375,7 @@ class CameraEngine(private val context: Context) {
         }
         capture.flashMode = if (rearFlash && !front) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
         if (playSound) shutter.play(MediaActionSound.SHUTTER_CLICK)
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "GlowCam_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date()) + ".jpg")
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/GlowCam")
-        }
+        val values = MediaSaver.imageValues(pending = false)
         val options = ImageCapture.OutputFileOptions.Builder(
             context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values,
         ).build()

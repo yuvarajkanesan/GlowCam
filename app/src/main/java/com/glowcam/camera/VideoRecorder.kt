@@ -45,8 +45,14 @@ class VideoRecorder(
 
     /** Starts the encoders and returns the surface the GL thread must render into. */
     fun start(): Surface {
-        pfd = context.contentResolver.openFileDescriptor(uri, "w")
-        muxer = MediaMuxer(pfd!!.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        muxer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            pfd = context.contentResolver.openFileDescriptor(uri, "w")
+            MediaMuxer(pfd!!.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        } else {
+            // Android 7 and older: MediaMuxer can only write to a file path
+            val path = MediaSaver.filePath(context, uri) ?: error("Cannot find the video file")
+            MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        }
 
         val vf = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)

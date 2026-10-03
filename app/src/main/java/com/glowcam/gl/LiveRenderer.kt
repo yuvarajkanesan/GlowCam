@@ -52,6 +52,17 @@ class LiveRenderer {
     private var snapW = 0
     private var snapH = 0
 
+    // fallback path for GPUs without GL_OES_EGL_image_external_essl3 (see OesPrepass)
+    private var usePrepass = false
+    private var prepass: OesPrepass? = null
+    private var preTex = 0
+    private var preFbo = 0
+    private var preW = 0
+    private var preH = 0
+
+    /** Shader level of detail (2 on weak devices). */
+    @Volatile var lod = 1
+
     @Volatile var mask: SubjectMask? = null
     @Volatile var params = EffectParams()
     @Volatile var faces: List<FaceLandmarks> = emptyList()
@@ -69,7 +80,17 @@ class LiveRenderer {
                 val e = EglCore(recordable = true)
                 egl = e
                 pbuffer = e.createPbuffer(1, 1).also { e.makeCurrent(it) }
-                program = EffectProgram(oes = true)
+                program = if (FORCE_PREPASS) null else try {
+                    EffectProgram(oes = true)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "External-texture shader not supported, using the 2D pre-pass", t)
+                    null
+                }
+                if (program == null) {
+                    prepass = OesPrepass()
+                    usePrepass = true
+                    program = EffectProgram(oes = false)
+                }
             } catch (t: Throwable) {
                 Log.e(TAG, "GL init failed", t)
                 failed = true
@@ -190,13 +211,28 @@ class LiveRenderer {
         else Mat3.rotateAroundCenter(if (mirror) 0 else REAR_EXTRA_ROTATION)
         val buf = Mat3.mul(Mat3.fromSurfaceTexture(stMat), adjust)
 
+        // Normal path samples the camera texture directly; the fallback copies it to a 2D texture first.
+        val srcMat: FloatArray
+        val texTarget: Int
+        val texId: Int
+        if (usePrepass) {
+            if (!renderPrepass()) return
+            srcMat = adjust
+            texTarget = GLES30.GL_TEXTURE_2D
+            texId = preTex
+        } else {
+            srcMat = buf
+            texTarget = GLES11Ext.GL_TEXTURE_EXTERNAL_OES
+            texId = oesTex
+        }
+
         val p = params
         val f = faces
         val maskId = if (p.needsMask) updateMaskTexture(mask) else 0
 
         snapCb?.let { cb ->
             snapCb = null
-            cb(try { renderSnapshot(prog, buf, upright) } catch (t: Throwable) { Log.w(TAG, "snapshot failed", t); null })
+            cb(try { renderSnapshot(prog, srcMat, upright, texTarget, texId) } catch (t: Throwable) { Log.w(TAG, "snapshot failed", t); null })
         }
 
         display?.let { d ->
@@ -204,8 +240,7 @@ class LiveRenderer {
                 e.makeCurrent(d)
                 GLES30.glViewport(0, 0, dispW, dispH)
                 val crop = EffectProgram.coverCrop(upright, dispW.toFloat() / dispH)
-                prog.draw(buf, upright, dispW, dispH, p.withoutGeometry(), crop, f, false,
-                    GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTex, maskId)
+                prog.draw(srcMat, upright, dispW, dispH, p.withoutGeometry(), crop, f, false, texTarget, texId, maskId, lod)
                 if (!e.swap(d)) {
                     e.destroySurface(d); display = null
                 }
@@ -219,8 +254,7 @@ class LiveRenderer {
                 e.makeCurrent(s)
                 GLES30.glViewport(0, 0, encW, encH)
                 val crop = EffectProgram.coverCrop(upright, encW.toFloat() / encH)
-                prog.draw(buf, upright, encW, encH, p.withoutGeometry(), crop, f, false,
-                    GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTex, maskId)
+                prog.draw(srcMat, upright, encW, encH, p.withoutGeometry(), crop, f, false, texTarget, texId, maskId, lod)
                 e.setPresentationTime(s, System.nanoTime() - recT0)
                 e.swap(s)
             } catch (t: Throwable) {
@@ -234,7 +268,39 @@ class LiveRenderer {
         handler.post { snapW = w; snapH = h; snapCb = cb }
     }
 
-    private fun renderSnapshot(prog: EffectProgram, buf: FloatArray, upright: Float): android.graphics.Bitmap {
+    /** Fallback: copies the camera frame into an upright 2D texture. Returns false if it could not run. */
+    private fun renderPrepass(): Boolean {
+        val pre = prepass ?: return false
+        val uw = if (rotation % 180 == 0) bufW else bufH
+        val uh = if (rotation % 180 == 0) bufH else bufW
+        if (uw <= 0 || uh <= 0) return false
+        if (preTex == 0 || preW != uw || preH != uh) {
+            if (preTex != 0) GLES30.glDeleteTextures(1, intArrayOf(preTex), 0)
+            if (preFbo != 0) GLES30.glDeleteFramebuffers(1, intArrayOf(preFbo), 0)
+            val t = IntArray(1)
+            GLES30.glGenTextures(1, t, 0)
+            preTex = t[0]
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, preTex)
+            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, uw, uh, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+            val f = IntArray(1)
+            GLES30.glGenFramebuffers(1, f, 0)
+            preFbo = f[0]
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, preFbo)
+            GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, preTex, 0)
+            preW = uw; preH = uh
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, preFbo)
+        GLES30.glViewport(0, 0, uw, uh)
+        pre.draw(stMat, oesTex)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        return true
+    }
+
+    private fun renderSnapshot(prog: EffectProgram, buf: FloatArray, upright: Float, texTarget: Int, texId: Int): android.graphics.Bitmap {
         val w = snapW
         val h = snapH
         pbuffer?.let { egl?.makeCurrent(it) }
@@ -250,7 +316,7 @@ class LiveRenderer {
         GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, tex[0], 0)
         GLES30.glViewport(0, 0, w, h)
         val crop = EffectProgram.coverCrop(upright, w.toFloat() / h)
-        prog.draw(buf, upright, w, h, EffectParams(), crop, emptyList(), true, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTex, 0)
+        prog.draw(buf, upright, w, h, EffectParams(), crop, emptyList(), true, texTarget, texId, 0, lod)
         val bytes = java.nio.ByteBuffer.allocateDirect(w * h * 4).order(java.nio.ByteOrder.nativeOrder())
         GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, bytes)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -307,5 +373,8 @@ class LiveRenderer {
     private companion object {
         const val TAG = "LiveRenderer"
         const val REAR_EXTRA_ROTATION = 0
+
+        /** Developer switch: forces the fallback path so it can be tested on a phone that does not need it. */
+        const val FORCE_PREPASS = false
     }
 }

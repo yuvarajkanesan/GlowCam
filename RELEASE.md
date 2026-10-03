@@ -44,3 +44,14 @@ Without a keystore the release build is signed with the debug key, which is fine
 - English only for now (strings are in code; moving them to resources is needed for Tamil/Hindi).
 - Samsung's 200 MP mode is not available to third-party apps; GlowCam saves the camera's standard full-resolution JPEG.
 - 4K / 60 fps video with beauty effects is demanding; 1080p 30 fps is the safe default.
+
+## Device and Android version support
+
+- **Android versions:** 5.0 (API 21) to 16 (API 36). minSdk 21 is the lowest that CameraX, Compose and ML Kit support.
+- **Android 9 and older** ask for the storage permission to save into Pictures / Movies (Android 10+ needs none). On Android 7 and older, video is written through a file path instead of a file descriptor.
+- **Hardware needed:** a camera and OpenGL ES 3.0 (almost every phone since 2014). Front camera, autofocus, microphone and gyroscope are optional.
+- **Weak phones** (under about 2.5 GB RAM, low-RAM flag, or a 4-core CPU with under 4 GB) get half the shader samples, face analysis on every third frame, smaller photo limits and 720p video by default.
+- **Old cameras** that cannot run preview + capture + face analysis together keep working without face effects.
+- **GPUs without GL_OES_EGL_image_external_essl3** use a small GLSL ES 1.0 pre-pass (`OesPrepass`). The switch `LiveRenderer.FORCE_PREPASS` forces it on for testing.
+- Shader uniform use is about 190 vectors, under the 224 that OpenGL ES 3.0 guarantees.
+- Android 16 (API 36) opt-out keeps the portrait lock on large screens. A real tablet layout is future work.

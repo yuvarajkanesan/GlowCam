@@ -10,7 +10,7 @@ import kotlin.math.max
 class FaceUniforms {
     var faceN = 0; val face = FloatArray(3 * 4)
     var mouthN = 0; val mouth = FloatArray(3 * 4)
-    var pushN = 0; val push = FloatArray(32 * 4); val pushDir = FloatArray(32 * 2)
+    var pushN = 0; val push = FloatArray(18 * 4); val pushDir = FloatArray(18 * 2)
     var eyeN = 0; val eye = FloatArray(6 * 4)
     var teethN = 0; val teeth = FloatArray(3 * 4)
     var bagN = 0; val bag = FloatArray(6 * 4)
@@ -18,10 +18,10 @@ class FaceUniforms {
     var smoothR = 0.02f
 
     // makeup (up to 3 faces)
-    var lipN = 0; val lipOuter = FloatArray(3 * 20 * 2); val lipInner = FloatArray(3 * 20 * 2); val lipBox = FloatArray(3 * 4)
-    var blushN = 0; val blush = FloatArray(6 * 4)
-    var browN = 0; val brow = FloatArray(3 * 10 * 2); val browW = FloatArray(3)
-    var shadeN = 0; val shade = FloatArray(6 * 4)
+    var lipN = 0; val lipOuter = FloatArray(20 * 2); val lipInner = FloatArray(20 * 2); val lipBox = FloatArray(4)
+    var blushN = 0; val blush = FloatArray(2 * 4)
+    var browN = 0; val brow = FloatArray(10 * 2); val browW = FloatArray(1)
+    var shadeN = 0; val shade = FloatArray(2 * 4)
 
     fun clear() {
         faceN = 0; mouthN = 0; pushN = 0; eyeN = 0; teethN = 0; bagN = 0; redN = 0
@@ -105,7 +105,7 @@ object FaceGeometry {
             // ---- makeup geometry ----
             if (p.hasMakeup) {
                 val fi = minOf(u.lipN, 2)
-                if (p.lip > 0f && u.lipN < 3) {
+                if (p.lip > 0f && u.lipN < 1) {
                     var minX = 1f; var minY = 1f; var maxX = 0f; var maxY = 0f
                     for (k in 0 until 20) {
                         val xo = face.x(LIPS_OUTER[k]); val yo = face.y(LIPS_OUTER[k])
@@ -118,13 +118,13 @@ object FaceGeometry {
                     u.lipBox[u.lipN * 4 + 2] = maxX + padX; u.lipBox[u.lipN * 4 + 3] = maxY + padY
                     u.lipN++
                 }
-                if (p.blush > 0f && u.blushN + 2 <= 6) {
+                if (p.blush > 0f && u.blushN + 2 <= 2) {
                     val r = fw * 0.17f
                     for (idx in intArrayOf(50, 280)) {
                         put4(u.blush, u.blushN++, face.x(idx), face.y(idx), r, 0f)
                     }
                 }
-                if (p.brow > 0f && u.browN < 3) {
+                if (p.brow > 0f && u.browN < 1) {
                     val bi = u.browN
                     var thick = 0f
                     for (k in 0 until 5) {
@@ -139,7 +139,7 @@ object FaceGeometry {
                     u.browW[bi] = (thick / 10f * 0.75f).coerceIn(0.004f, 0.03f)
                     u.browN++
                 }
-                if (p.eyeShadow > 0f && u.shadeN + 2 <= 6) {
+                if (p.eyeShadow > 0f && u.shadeN + 2 <= 2) {
                     val pairs = arrayOf(intArrayOf(33, 133, 159, 52), intArrayOf(263, 362, 386, 282))
                     for (q in pairs) {
                         val ew = dh(q[0], q[1])
@@ -154,7 +154,7 @@ object FaceGeometry {
             }
 
             // Slim face + jaw: local push handles that move content towards the face axis.
-            if ((p.slim > 0f || p.jaw > 0f) && u.pushN + 9 <= 32) {
+            if ((p.slim > 0f || p.jaw > 0f) && u.pushN + 9 <= 18) {
                 if (p.slim > 0f) {
                     val disp = 0.075f * p.slim * fw
                     val rad = 0.40f * fw

@@ -38,12 +38,12 @@ uniform float uStraighten;  // radians
 
 uniform int uFaceN;   uniform vec4 uFace[3];
 uniform int uMouthN;  uniform vec4 uMouth[3];
-uniform int uPushN;   uniform vec4 uPush[32];  uniform vec2 uPushDir[32];
+uniform int uPushN;   uniform vec4 uPush[18];  uniform vec2 uPushDir[18];
 uniform int uEyeN;    uniform vec4 uEye[6];
 uniform int uTeethN;  uniform vec4 uTeethE[3];
 uniform int uBagN;    uniform vec4 uBag[6];
 uniform int uRedN;    uniform vec4 uRed[6];
-uniform int uBlemN;   uniform vec4 uBlem[16];
+uniform int uBlemN;   uniform vec4 uBlem[10];
 
 uniform float uSmooth;
 uniform float uSmoothR;
@@ -64,6 +64,7 @@ uniform sampler2D uMask;   // person mask, row 0 = top
 uniform int uHasMask;
 uniform int uMode;         // subject-aware filter mode, see FilterDef.mode
 uniform float uBgAmt;
+uniform int uLod;          // 1 = full quality, 2 = half the samples (weak GPUs)
 
 // background replace
 uniform int uBgMode;
@@ -72,10 +73,10 @@ uniform vec3 uBgC2;
 uniform float uBgBlur;
 
 // makeup
-uniform int uLipN;    uniform vec2 uLipOuter[60]; uniform vec2 uLipInner[60]; uniform vec4 uLipBox[3]; uniform vec4 uLipCol;
-uniform int uBlushN;  uniform vec4 uBlush[6];  uniform vec4 uBlushCol;
-uniform int uBrowN;   uniform vec2 uBrow[30];  uniform float uBrowW[3]; uniform vec4 uBrowCol;
-uniform int uShadeN;  uniform vec4 uShade[6];  uniform vec4 uShadeCol;
+uniform int uLipN;    uniform vec2 uLipOuter[20]; uniform vec2 uLipInner[20]; uniform vec4 uLipBox[1]; uniform vec4 uLipCol;
+uniform int uBlushN;  uniform vec4 uBlush[2];  uniform vec4 uBlushCol;
+uniform int uBrowN;   uniform vec2 uBrow[10];  uniform float uBrowW[1]; uniform vec4 uBrowCol;
+uniform int uShadeN;  uniform vec4 uShade[2];  uniform vec4 uShadeCol;
 
 uniform float uBrightness;
 uniform float uContrast;
@@ -135,10 +136,12 @@ vec3 subjectEffect(vec3 f, vec2 q) {
         fg = mix(gray, f, 1.18);
     } else if (uMode == 2) {                // portrait blur: soft bokeh background
         vec3 acc = vec3(0.0);
+        int nb = 24 / uLod;
         for (int i = 0; i < 24; i++) {
-            acc += src(q + disc(i, 24) * (0.03 * uBgAmt) / asp());
+            if (i >= nb) break;
+            acc += src(q + disc(i, nb) * (0.03 * uBgAmt) / asp());
         }
-        bg = acc / 24.0;
+        bg = acc / float(nb);
     } else if (uMode == 3) {                // spotlight: dark background, lifted subject
         bg = gray * 0.22;
         fg = f * 1.10 + 0.02;
@@ -210,11 +213,13 @@ void main() {
         }
         float rad = uBlur * 0.035 * bm;
         if (rad > 0.0004) {
+            int n = 16 / uLod;
             vec3 acc = c;
             for (int i = 0; i < 16; i++) {
-                acc += src(q + disc(i, 16) * rad / asp());
+                if (i >= n) break;
+                acc += src(q + disc(i, n) * rad / asp());
             }
-            c = acc / 17.0;
+            c = acc / float(n + 1);
         }
     }
 
@@ -241,8 +246,10 @@ void main() {
         float k = mix(70.0, 18.0, uSmooth);
         vec3 acc = c;
         float ws = 1.0;
+        int ns = 16 / uLod;
         for (int i = 0; i < 16; i++) {
-            vec3 s = src(q + disc(i, 16) * uSmoothR / asp());
+            if (i >= ns) break;
+            vec3 s = src(q + disc(i, ns) * uSmoothR / asp());
             vec3 d = s - c;
             float w = exp(-dot(d, d) * k);
             acc += s * w;
@@ -378,10 +385,12 @@ void main() {
         vec3 f = applyFilter(c);
         if (uGlow > 0.001) {
             vec3 g = vec3(0.0);
+            int ng = 12 / uLod;
             for (int i = 0; i < 12; i++) {
-                g += src(q + disc(i, 12) * 0.022 / asp());
+                if (i >= ng) break;
+                g += src(q + disc(i, ng) * 0.022 / asp());
             }
-            g /= 12.0;
+            g /= float(ng);
             f = 1.0 - (1.0 - f) * (1.0 - g * uGlow * 0.9);
         }
         if (uMode != 0 && uHasMask == 1) {
@@ -398,10 +407,12 @@ void main() {
             bgc = mix(uBgC1, uBgC2, 1.0 - vOut.y);
         } else if (uBgMode == 3) {
             vec3 acc = vec3(0.0);
+            int nr = 24 / uLod;
             for (int i = 0; i < 24; i++) {
-                acc += src(q + disc(i, 24) * (0.045 * uBgBlur) / asp());
+                if (i >= nr) break;
+                acc += src(q + disc(i, nr) * (0.045 * uBgBlur) / asp());
             }
-            bgc = acc / 24.0;
+            bgc = acc / float(nr);
         }
         c = mix(bgc, c, sub);
     }

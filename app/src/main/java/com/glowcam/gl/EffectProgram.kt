@@ -13,7 +13,7 @@ class EffectProgram(oes: Boolean) {
         put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)); position(0)
     }
     private val faceU = FaceUniforms()
-    private val blem = FloatArray(16 * 4)
+    private val blem = FloatArray(10 * 4)
 
     init {
         val vs = compile(GLES30.GL_VERTEX_SHADER, Shaders.VERTEX)
@@ -62,6 +62,7 @@ class EffectProgram(oes: Boolean) {
         textureTarget: Int,
         textureId: Int,
         maskTex: Int = 0,
+        lod: Int = 1,
     ) {
         GLES30.glUseProgram(program)
         // person mask on texture unit 1 (0 = none; the shader skips subject effects then)
@@ -70,6 +71,7 @@ class EffectProgram(oes: Boolean) {
         i1("uMask", 1)
         i1("uHasMask", if (maskTex != 0) 1 else 0)
         i1("uMode", p.filter.mode)
+        i1("uLod", lod)
         f1("uBgAmt", p.filter.bgAmount)
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
         GLES30.glBindTexture(textureTarget, textureId)
@@ -89,19 +91,19 @@ class EffectProgram(oes: Boolean) {
         i1("uFaceN", faceU.faceN); GLES30.glUniform4fv(loc("uFace"), 3, faceU.face, 0)
         i1("uMouthN", faceU.mouthN); GLES30.glUniform4fv(loc("uMouth"), 3, faceU.mouth, 0)
         i1("uPushN", faceU.pushN)
-        GLES30.glUniform4fv(loc("uPush"), 32, faceU.push, 0)
-        GLES30.glUniform2fv(loc("uPushDir"), 32, faceU.pushDir, 0)
+        GLES30.glUniform4fv(loc("uPush"), 18, faceU.push, 0)
+        GLES30.glUniform2fv(loc("uPushDir"), 18, faceU.pushDir, 0)
         i1("uEyeN", faceU.eyeN); GLES30.glUniform4fv(loc("uEye"), 6, faceU.eye, 0)
         i1("uTeethN", faceU.teethN); GLES30.glUniform4fv(loc("uTeethE"), 3, faceU.teeth, 0)
         i1("uBagN", faceU.bagN); GLES30.glUniform4fv(loc("uBag"), 6, faceU.bag, 0)
         i1("uRedN", faceU.redN); GLES30.glUniform4fv(loc("uRed"), 6, faceU.red, 0)
 
-        val bl = p.blemishes.take(16)
+        val bl = p.blemishes.take(10)
         for ((i, b) in bl.withIndex()) {
             blem[i * 4] = b.x; blem[i * 4 + 1] = b.y; blem[i * 4 + 2] = b.r; blem[i * 4 + 3] = 0f
         }
         i1("uBlemN", bl.size)
-        GLES30.glUniform4fv(loc("uBlem"), 16, blem, 0)
+        GLES30.glUniform4fv(loc("uBlem"), 10, blem, 0)
 
         // background replace
         i1("uBgMode", p.bgMode)
@@ -111,19 +113,19 @@ class EffectProgram(oes: Boolean) {
 
         // makeup
         i1("uLipN", faceU.lipN)
-        GLES30.glUniform2fv(loc("uLipOuter"), 60, faceU.lipOuter, 0)
-        GLES30.glUniform2fv(loc("uLipInner"), 60, faceU.lipInner, 0)
-        GLES30.glUniform4fv(loc("uLipBox"), 3, faceU.lipBox, 0)
+        GLES30.glUniform2fv(loc("uLipOuter"), 20, faceU.lipOuter, 0)
+        GLES30.glUniform2fv(loc("uLipInner"), 20, faceU.lipInner, 0)
+        GLES30.glUniform4fv(loc("uLipBox"), 1, faceU.lipBox, 0)
         GLES30.glUniform4f(loc("uLipCol"), rgb(p.lipColor, 16), rgb(p.lipColor, 8), rgb(p.lipColor, 0), if (faceU.lipN > 0) p.lip else 0f)
         i1("uBlushN", faceU.blushN)
-        GLES30.glUniform4fv(loc("uBlush"), 6, faceU.blush, 0)
+        GLES30.glUniform4fv(loc("uBlush"), 2, faceU.blush, 0)
         GLES30.glUniform4f(loc("uBlushCol"), rgb(p.blushColor, 16), rgb(p.blushColor, 8), rgb(p.blushColor, 0), if (faceU.blushN > 0) p.blush else 0f)
         i1("uBrowN", faceU.browN)
-        GLES30.glUniform2fv(loc("uBrow"), 30, faceU.brow, 0)
-        GLES30.glUniform1fv(loc("uBrowW"), 3, faceU.browW, 0)
+        GLES30.glUniform2fv(loc("uBrow"), 10, faceU.brow, 0)
+        GLES30.glUniform1fv(loc("uBrowW"), 1, faceU.browW, 0)
         GLES30.glUniform4f(loc("uBrowCol"), rgb(p.browColor, 16), rgb(p.browColor, 8), rgb(p.browColor, 0), if (faceU.browN > 0) p.brow else 0f)
         i1("uShadeN", faceU.shadeN)
-        GLES30.glUniform4fv(loc("uShade"), 6, faceU.shade, 0)
+        GLES30.glUniform4fv(loc("uShade"), 2, faceU.shade, 0)
         GLES30.glUniform4f(loc("uShadeCol"), rgb(p.shadowColor, 16), rgb(p.shadowColor, 8), rgb(p.shadowColor, 0), if (faceU.shadeN > 0) p.eyeShadow else 0f)
 
         f1("uSmooth", p.smooth)
