@@ -30,7 +30,7 @@ class SubjectSegmenter {
         }
         val input = InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees)
         live.process(input)
-            .addOnSuccessListener { onResult(toMask(it, mirror)) }
+            .addOnSuccessListener { onResult(toMask(it, mirror, smooth = true)) }
             .addOnFailureListener { onResult(null) }
             .addOnCompleteListener { onDone() }
     }
@@ -38,8 +38,8 @@ class SubjectSegmenter {
     /** Still-image path (capture, editor). */
     suspend fun segment(bitmap: Bitmap, mirror: Boolean = false): SubjectMask? {
         val longest = max(bitmap.width, bitmap.height)
-        val scaled = if (longest > 640) {
-            val s = 640f / longest
+        val scaled = if (longest > 1024) {
+            val s = 1024f / longest
             Bitmap.createScaledBitmap(bitmap, (bitmap.width * s).toInt().coerceAtLeast(1), (bitmap.height * s).toInt().coerceAtLeast(1), true)
         } else bitmap
         return try {
@@ -51,7 +51,9 @@ class SubjectSegmenter {
         }
     }
 
-    private fun toMask(m: SegmentationMask, mirror: Boolean): SubjectMask {
+    private var prevLive: ByteArray? = null
+
+    private fun toMask(m: SegmentationMask, mirror: Boolean, smooth: Boolean = false): SubjectMask {
         val w = m.width
         val h = m.height
         val fb = m.buffer.asFloatBuffer()
@@ -62,6 +64,16 @@ class SubjectSegmenter {
                 val dx = if (mirror) w - 1 - x else x
                 out[y * w + dx] = (v * 255f).toInt().toByte()
             }
+        }
+        if (smooth) {
+            // blend with the previous live mask so the edge does not flicker from frame to frame
+            val prev = prevLive
+            if (prev != null && prev.size == out.size) {
+                for (i in out.indices) {
+                    out[i] = (((out[i].toInt() and 0xFF) * 0.65f + (prev[i].toInt() and 0xFF) * 0.35f).toInt()).toByte()
+                }
+            }
+            prevLive = out.copyOf()
         }
         return SubjectMask(w, h, out)
     }

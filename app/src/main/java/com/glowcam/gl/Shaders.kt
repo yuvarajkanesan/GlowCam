@@ -114,19 +114,82 @@ float segDist(vec2 p, vec2 a, vec2 b) {
     return length(pa - ba * h);
 }
 
-/** 1 on the person, 0 on the background (softened so cut-out edges are not stair-stepped). */
-float subjectAlpha(vec2 q) {
+/**
+ * Edge-aware person matte. The raw mask is low resolution and blurry at the edges, so near the edge each
+ * neighbouring mask value is weighted by how similar its photo colour is to this pixel (a joint bilateral
+ * filter). That snaps the cut-out to the real edge of hair and shoulders. [fgEst] is the clean foreground
+ * colour estimated from the person's interior, used to remove the old background's colour from the rim.
+ */
+float matte(vec2 q, out vec3 fgEst) {
+    vec3 c0 = src(q);
+    fgEst = c0;
     vec2 mc = vec2(q.x, 1.0 - q.y);
-    vec2 ts = 1.5 / vec2(textureSize(uMask, 0));
-    float m = texture(uMask, mc).r * 0.36
-            + 0.16 * (texture(uMask, mc + vec2(ts.x, 0.0)).r + texture(uMask, mc - vec2(ts.x, 0.0)).r
-                    + texture(uMask, mc + vec2(0.0, ts.y)).r + texture(uMask, mc - vec2(0.0, ts.y)).r);
-    return smoothstep(0.35, 0.65, m);
+    float m0 = texture(uMask, mc).r;
+    if (m0 > 0.985) return 1.0;
+    if (m0 < 0.015) return 0.0;
+    vec2 ts = 1.0 / vec2(textureSize(uMask, 0));
+    int n = 12 / uLod;
+    float wsum = 1.0;
+    float asum = m0;
+    vec3 fsum = c0 * m0;
+    float fw = m0;
+    for (int i = 0; i < 12; i++) {
+        if (i >= n) break;
+        vec2 o = disc(i, n) * 4.0;
+        float mi = texture(uMask, mc + o * ts).r;
+        vec3 ci = src(vec2(q.x + o.x * ts.x, q.y - o.y * ts.y));
+        vec3 d = ci - c0;
+        float w = exp(-dot(d, d) * 18.0);
+        wsum += w;
+        asum += w * mi;
+        fsum += w * mi * ci;
+        fw += w * mi;
+    }
+    fgEst = fsum / max(fw, 1e-3);
+    return smoothstep(0.30, 0.72, asum / wsum);
+}
+
+float hash1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+
+/** Realistic generated backdrops: bokeh light scenes and a studio spotlight. */
+vec3 proceduralBg(int mode, vec2 uv) {
+    vec3 base1;
+    vec3 base2;
+    vec3 light;
+    float dens = 1.0;
+    float grain = (hash1(uv.x * 91.7 + uv.y * 57.3) - 0.5) * 0.014;
+    if (mode == 4) {            // golden bokeh
+        base1 = vec3(0.30, 0.15, 0.05); base2 = vec3(0.06, 0.03, 0.02); light = vec3(1.0, 0.78, 0.40);
+    } else if (mode == 5) {     // night city lights
+        base1 = vec3(0.07, 0.09, 0.26); base2 = vec3(0.01, 0.01, 0.06); light = vec3(0.55, 0.75, 1.0);
+    } else if (mode == 6) {     // pastel dream
+        base1 = vec3(1.0, 0.90, 0.94); base2 = vec3(0.93, 0.92, 1.0); light = vec3(1.0, 0.97, 0.99); dens = 0.55;
+    } else {                    // studio spotlight
+        vec2 d = (uv - vec2(0.5, 0.58)) * vec2(uOutAspect, 1.0);
+        float g = 1.0 - smoothstep(0.0, 1.05, length(d));
+        return clamp(mix(vec3(0.10, 0.10, 0.12), vec3(0.80, 0.80, 0.82), g) + grain, 0.0, 1.0);
+    }
+    vec3 col = mix(base2, base1, smoothstep(0.0, 1.0, uv.y));
+    int cnt = 14 / uLod;
+    for (int i = 0; i < 14; i++) {
+        if (i >= cnt) break;
+        float fi = float(i);
+        vec2 p = vec2(hash1(fi * 1.7 + 0.3), hash1(fi * 3.1 + 5.2));
+        float r = 0.045 + 0.11 * hash1(fi * 7.3 + 1.1);
+        float dist = length((uv - p) * vec2(uOutAspect, 1.0));
+        float disc = 1.0 - smoothstep(r * 0.8, r, dist);
+        float ring = smoothstep(r * 0.78, r, dist) * (1.0 - smoothstep(r, r * 1.08, dist));
+        float a = (0.18 + 0.38 * hash1(fi * 5.9 + 2.0)) * dens;
+        vec3 tint = mix(light, light.zyx, hash1(fi * 11.3) * 0.6);
+        col += tint * (disc * a + ring * a * 0.6);
+    }
+    return clamp(col + grain, 0.0, 1.0);
 }
 
 /** Treats the person and the background differently (needs uMask). */
 vec3 subjectEffect(vec3 f, vec2 q) {
-    float sub = subjectAlpha(q);
+    vec3 fgUnused;
+    float sub = matte(q, fgUnused);
     float l = dot(f, LUM);
     vec3 gray = vec3(l);
     vec3 bg = f;
@@ -401,20 +464,33 @@ void main() {
 
     // ---- background replace ----
     if (uBgMode != 0 && uHasMask == 1) {
-        float sub = subjectAlpha(q);
+        vec3 fgEst;
+        float a = matte(q, fgEst);
+        vec3 raw = src(q);
         vec3 bgc = uBgC1;
         if (uBgMode == 2) {
             bgc = mix(uBgC1, uBgC2, 1.0 - vOut.y);
         } else if (uBgMode == 3) {
+            // real blur of the scene behind the person, with bright lights blooming into soft bokeh
             vec3 acc = vec3(0.0);
+            float wsum = 0.0;
             int nr = 24 / uLod;
             for (int i = 0; i < 24; i++) {
                 if (i >= nr) break;
-                acc += src(q + disc(i, nr) * (0.045 * uBgBlur) / asp());
+                vec3 s = src(q + disc(i, nr) * (0.045 * uBgBlur) / asp());
+                float w = 1.0 + 3.0 * max(dot(s, LUM) - 0.72, 0.0);
+                acc += s * w;
+                wsum += w;
             }
-            bgc = acc / float(nr);
+            bgc = acc / wsum;
+        } else if (uBgMode >= 4) {
+            bgc = proceduralBg(uBgMode, vOut);
         }
-        c = mix(bgc, c, sub);
+        float edge = a * (1.0 - a) * 4.0;                 // 1 at the middle of the edge, 0 inside / outside
+        vec3 fgc = c + (fgEst - raw) * edge * 0.75;       // take the old background's colour out of the rim
+        fgc = fgc + (bgc - fgc) * edge * 0.22;            // soft light wrap from the new background
+        fgc *= mix(vec3(1.0), 0.85 + 0.3 * bgc, 0.12);    // match overall tone to the new scene
+        c = mix(bgc, clamp(fgc, 0.0, 1.0), a);
     }
 
     // ---- user adjustments ----

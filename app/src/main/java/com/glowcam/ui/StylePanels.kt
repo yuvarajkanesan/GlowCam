@@ -97,6 +97,10 @@ private val BG_OPTIONS = listOf(
     BgOption("Sunset", 2, 0xFFFF5FA2.toInt(), 0xFFFF8A5B.toInt()),
     BgOption("Ocean", 2, 0xFF2E3192.toInt(), 0xFF1BFFFF.toInt()),
     BgOption("Studio", 2, 0xFF3A3A44.toInt(), 0xFF0E0E12.toInt()),
+    BgOption("Gold bokeh", 4, 0xFF5A3010.toInt(), 0xFFFFC866.toInt()),
+    BgOption("Night lights", 5, 0xFF0A0C30.toInt(), 0xFF7FB0FF.toInt()),
+    BgOption("Pastel bokeh", 6, 0xFFFFD9E8.toInt(), 0xFFE6DEFF.toInt()),
+    BgOption("Spotlight", 7, 0xFF1A1A1F.toInt(), 0xFFD0D0D6.toInt()),
 )
 
 /** Replace the background behind the person. */
@@ -106,7 +110,7 @@ fun BackgroundPanel(p: EffectParams, onChange: (EffectParams) -> Unit, onCommit:
         Text("Keeps you sharp and replaces everything behind you.", color = TextDim, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(BG_OPTIONS) { o ->
-                val sel = o.mode == p.bgMode && (o.mode == 0 || o.mode == 3 || (o.c1 == p.bgColor1 && o.c2 == p.bgColor2))
+                val sel = o.mode == p.bgMode && (o.mode == 0 || o.mode >= 3 || (o.c1 == p.bgColor1 && o.c2 == p.bgColor2))
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable {
                     onChange(p.copy(bgMode = o.mode, bgColor1 = o.c1, bgColor2 = o.c2)); onCommit()
                 }) {
@@ -114,7 +118,7 @@ fun BackgroundPanel(p: EffectParams, onChange: (EffectParams) -> Unit, onCommit:
                         Modifier.size(52.dp).clip(RoundedCornerShape(14.dp))
                             .background(
                                 when (o.mode) {
-                                    2 -> Brush.verticalGradient(listOf(Color(o.c2), Color(o.c1)))
+                                    2, 4, 5, 6, 7 -> Brush.verticalGradient(listOf(Color(o.c2), Color(o.c1)))
                                     1 -> Brush.verticalGradient(listOf(Color(o.c1), Color(o.c1)))
                                     else -> Brush.verticalGradient(listOf(Color(0xFF2A2A33), Color(0xFF2A2A33)))
                                 },

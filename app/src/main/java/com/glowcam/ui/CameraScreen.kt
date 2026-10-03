@@ -796,7 +796,9 @@ fun CameraScreen(
                         .clickable { onOpenGallery() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    thumb?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                    androidx.compose.animation.Crossfade(targetState = thumb, label = "thumb") { bmp ->
+                        bmp?.let { Image(it.asImageBitmap(), "Latest photo", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                    }
                     if (last?.second == true) Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(24.dp))
                     if (last == null) Icon(Icons.Rounded.PhotoLibrary, null, tint = Color(0x88FFFFFF), modifier = Modifier.size(22.dp))
                 }

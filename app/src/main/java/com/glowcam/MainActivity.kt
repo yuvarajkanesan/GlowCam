@@ -20,11 +20,15 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.glowcam.ui.CameraScreen
 import com.glowcam.ui.CollageScreen
 import com.glowcam.ui.EditorScreen
 import com.glowcam.ui.GalleryScreen
 import com.glowcam.ui.GlowTheme
+import com.glowcam.ui.loadGalleryItems
 import com.glowcam.ui.ResultScreen
 import com.glowcam.ui.SettingsScreen
 
@@ -107,6 +111,14 @@ fun GlowCamApp(
     var lastMedia by remember { mutableStateOf<Pair<Uri, Boolean>?>(null) }
     var galleryRefresh by remember { mutableIntStateOf(0) }
     val screen = stack.last()
+    val context = LocalContext.current
+
+    // The thumbnail next to the shutter always shows the newest GlowCam photo or video,
+    // also after a restart, and falls back to the next newest when one is deleted.
+    LaunchedEffect(galleryRefresh) {
+        val latest = withContext(Dispatchers.IO) { loadGalleryItems(context).firstOrNull() }
+        if (latest != null) lastMedia = latest.uri to latest.isVideo
+    }
 
     fun push(s: Screen) { stack.add(s) }
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
