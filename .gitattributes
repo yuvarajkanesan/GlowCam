@@ -1,0 +1,14 @@
+# Normalise text files; keep scripts runnable on every OS.
+* text=auto
+*.sh eol=lf
+gradlew eol=lf
+*.bat eol=crlf
+*.ps1 eol=crlf
+
+# Binary files: never touch line endings.
+*.png binary
+*.jpg binary
+*.jar binary
+*.jks binary
+*.apk binary
+*.aab binary

@@ -1,0 +1,80 @@
+# ============================================================
+# GlowCam .gitignore (Android / Kotlin / Gradle, built on Windows)
+# ============================================================
+
+# ---- Secrets and signing: NEVER commit these ----
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+.env
+.env.*
+secrets.properties
+google-services.json
+service-account*.json
+
+# ---- Gradle ----
+.gradle/
+/build/
+/app/build/
+**/build/
+!**/src/**/build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# ---- Kotlin ----
+.kotlin/
+*.class
+
+# ---- Local machine configuration ----
+local.properties
+
+# ---- Build outputs ----
+*.apk
+*.aab
+*.ap_
+*.dex
+output-metadata.json
+captures/
+.externalNativeBuild/
+.cxx/
+lint-results*.html
+lint-results*.xml
+lint-results*.txt
+lint-baseline.xml.bak
+
+# ---- Android Studio / IntelliJ ----
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# ---- VS Code ----
+.vscode/
+
+# ---- Claude Code local settings ----
+.claude/settings.local.json
+.claude/worktrees/
+
+# ---- Logs, crashes, profiling ----
+*.log
+hs_err_pid*
+replay_pid*
+*.hprof
+*.trace
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---- Temporary / scratch ----
+*.tmp
+*.bak
+*.swp
+*~

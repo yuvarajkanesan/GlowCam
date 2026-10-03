@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- outer lens ring -->
+    <path
+        android:pathData="M34,56a20,20 0 1,0 40,0a20,20 0 1,0 -40,0"
+        android:strokeWidth="5"
+        android:strokeColor="#FFFFFFFF" />
+    <!-- inner lens -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M44,56a10,10 0 1,0 20,0a10,10 0 1,0 -20,0" />
+    <!-- lens highlight -->
+    <path
+        android:fillColor="#FFFF5FA2"
+        android:pathData="M49,52a3,3 0 1,0 6,0a3,3 0 1,0 -6,0" />
+    <!-- sparkle -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M76,27L78.4,34.6L86,37L78.4,39.4L76,47L73.6,39.4L66,37L73.6,34.6Z" />
+</vector>
