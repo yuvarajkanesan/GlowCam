@@ -126,6 +126,7 @@ class CameraEngine(private val context: Context) {
         video: Boolean = false,
         videoRes: Int = 1080,
         fps: Int = 30,
+        photoMp: Int = 0,
     ) {
         val p = cameraProvider()
         this.front = front
@@ -162,15 +163,21 @@ class CameraEngine(private val context: Context) {
         val preview = previewBuilder.build()
         preview.setSurfaceProvider(renderer.surfaceProvider)
 
+        // a chosen MP step asks for that exact size (unless Original quality already forces the maximum)
+        val chosen = photoSizeFor(ch, wide, photoMp)?.takeIf { !maxRes }
         val captureBuilder = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .setResolutionSelector(
                 ResolutionSelector.Builder()
                     .setAspectRatioStrategy(strategy)
-                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                    .setResolutionStrategy(
+                        chosen?.let { ResolutionStrategy(it, ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER) }
+                            ?: ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY,
+                    )
                     // 200 MP sensors only deliver full resolution in "maximum resolution" mode
                     .setAllowedResolutionMode(
-                        if (maxRes && !front) ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
+                        if ((maxRes && !front) || (chosen != null && needsMaxMode(ch, chosen)))
+                            ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
                         else ResolutionSelector.PREFER_CAPTURE_RATE_OVER_HIGHER_RESOLUTION,
                     )
                     .build(),
@@ -361,6 +368,56 @@ class CameraEngine(private val context: Context) {
         if (ch.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES).has(CaptureRequest.EDGE_MODE_HIGH_QUALITY)) {
             ext.setCaptureRequestOption(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
         }
+    }
+
+    /** JPEG sizes this camera offers for the aspect ratio, largest first. */
+    private fun jpegSizes(ch: CameraCharacteristics?, wide: Boolean): List<Size> {
+        val map = ch?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return emptyList()
+        var all = map.getOutputSizes(ImageFormat.JPEG).orEmpty().toList() +
+            (if (Build.VERSION.SDK_INT >= 23) map.getHighResolutionOutputSizes(ImageFormat.JPEG).orEmpty().toList() else emptyList())
+        // 50 / 200 MP sensors only offer their full size through the separate "maximum resolution" mode
+        if (Build.VERSION.SDK_INT >= 31) {
+            all = all + ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION)
+                ?.getOutputSizes(ImageFormat.JPEG).orEmpty().toList()
+        }
+        val ratio = if (wide) 16f / 9f else 4f / 3f
+        return all.filter { kotlin.math.abs(it.width.toFloat() / it.height - ratio) < 0.02f && it.width.toLong() * it.height >= 900_000L }
+            .distinct().sortedByDescending { it.width.toLong() * it.height }
+    }
+
+    private fun mpOf(s: Size) = (s.width.toLong() * s.height / 1_000_000.0).roundToInt()
+
+    /** True when this size is only available in the camera's maximum-resolution mode. */
+    private fun needsMaxMode(ch: CameraCharacteristics?, size: Size): Boolean {
+        if (Build.VERSION.SDK_INT < 31) return false
+        val normal = ch?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.JPEG).orEmpty()
+        val high = if (Build.VERSION.SDK_INT >= 23) {
+            ch?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getHighResolutionOutputSizes(ImageFormat.JPEG).orEmpty()
+        } else emptyArray()
+        return size !in normal && size !in high
+    }
+
+    /** A few well-spaced megapixel steps the camera supports (largest first), e.g. [200, 50, 12, 5, 3]. */
+    fun photoMpOptions(front: Boolean, wide: Boolean): List<Int> {
+        val all = jpegSizes(characteristics(front), wide).map { mpOf(it) }.filter { it >= 1 }.distinct()
+        val kept = ArrayList<Int>()
+        for (mp in all) if (kept.isEmpty() || mp <= kept.last() * 0.6) kept.add(mp)
+        val std = defaultMp(front, wide)
+        if (std > 0 && std !in kept) kept.add(std)
+        return kept.sortedDescending().take(5)
+    }
+
+    /** MP of the camera's normal (non maximum-resolution) best size; what "no choice" captures. */
+    fun defaultMp(front: Boolean, wide: Boolean): Int {
+        val ch = characteristics(front)
+        return jpegSizes(ch, wide).firstOrNull { !needsMaxMode(ch, it) }?.let { mpOf(it) } ?: 0
+    }
+
+    /** Size for the chosen MP step, or null for "maximum". */
+    private fun photoSizeFor(ch: CameraCharacteristics?, wide: Boolean, mp: Int): Size? {
+        if (mp <= 0) return null
+        val sizes = jpegSizes(ch, wide)
+        return sizes.firstOrNull { mpOf(it) == mp } ?: sizes.firstOrNull { mpOf(it) < mp }
     }
 
     /** Pixel size the photo capture is actually configured for (after binding). */

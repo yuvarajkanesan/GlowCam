@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.FilterVintage
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.FlipCameraAndroid
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -253,10 +254,12 @@ fun CameraScreen(
     LaunchedEffect(settings.mirrorSelfie.value) { engine.mirrorSelfie = settings.mirrorSelfie.value }
     LaunchedEffect(settings.shutterLevel.value) { engine.soundLevel = settings.shutterLevel.value }
     LaunchedEffect(settings.showHistogram.value) { engine.wantHistogram = settings.showHistogram.value }
-    LaunchedEffect(front, aspect.wide, sharp, maxRes, mode, settings.videoRes.value, settings.videoFps.value) {
+    val mpOptions = remember(front, aspect.wide) { engine.photoMpOptions(front, aspect.wide) }
+    val mpChoice = settings.photoMp.value
+    LaunchedEffect(front, aspect.wide, sharp, maxRes, mode, settings.videoRes.value, settings.videoFps.value, mpChoice) {
         engine.mirrorSelfie = settings.mirrorSelfie.value
         try {
-            engine.bind(owner, front, aspect.wide, sharp, maxRes && !front, mode == Mode.VIDEO, settings.videoRes.value, settings.videoFps.value)
+            engine.bind(owner, front, aspect.wide, sharp, maxRes && !front, mode == Mode.VIDEO, settings.videoRes.value, settings.videoFps.value, mpChoice)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -362,7 +365,8 @@ fun CameraScreen(
             if (useGlow) {
                 glow = true; setScreenBright(true); delay(350)
             }
-            val full = maxRes && !front
+            val bigCapture = engine.captureSize()?.let { it.width.toLong() * it.height > 30_000_000L } == true
+            val full = (maxRes && !front) || bigCapture
             val night = shootMode == ShootMode.NIGHT
             val shots = if (sharp && !(flash && !front) && !full && !night) DeviceProfile.burstShots(context) else 1
             val sound = true
@@ -619,6 +623,25 @@ fun CameraScreen(
                     { aspect = Aspect.values()[(aspect.ordinal + 1) % Aspect.values().size] },
                     badge = aspect.label,
                 )
+                if (mode == Mode.PHOTO && !recording && mpOptions.size > 1) {
+                    // tap to step down through the camera's megapixel sizes, wrapping back to the maximum
+                    val std = remember(front, aspect.wide) { engine.defaultMp(front, aspect.wide) }
+                    val shown = if (maxRes && !front) mpOptions.first() else if (mpChoice in mpOptions) mpChoice else std
+                    GlassButton(
+                        Icons.Rounded.HighQuality, "Megapixels",
+                        {
+                            if (maxRes && !front) {
+                                say("Turn off Original quality in Settings to pick a smaller size")
+                            } else {
+                                val i = mpOptions.indexOf(shown)
+                                val next = mpOptions[(i + 1) % mpOptions.size]
+                                settings.photoMp.set(next)
+                                say(if (next >= 30) "Photo size: $next MP (full sensor, saved untouched)" else "Photo size: $next MP")
+                            }
+                        },
+                        selected = shown != std, badge = "${shown}MP",
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 var importMenu by remember { mutableStateOf(false) }

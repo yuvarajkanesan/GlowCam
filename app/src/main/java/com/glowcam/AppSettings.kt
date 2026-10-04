@@ -50,6 +50,9 @@ class AppSettings(context: Context) {
     /** JPEG quality: 90, 95, 97 or 100. */
     val photoQuality = IntPref(p, "photo_quality", 97)
 
+    /** Photo resolution in megapixels; 0 = the camera's maximum. */
+    val photoMp = IntPref(p, "photo_mp", 0)
+
     /** Video height class: 720, 1080 or 2160 (4K). */
     val videoRes = IntPref(p, "video_res", DeviceProfile.defaultVideoRes(context))
     val videoFps = IntPref(p, "video_fps", 30)
