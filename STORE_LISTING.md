@@ -53,8 +53,8 @@ SHARE IN ONE TAP
 PRIVATE BY DESIGN
 Photos, faces and videos never leave your phone. GlowCam does not use the internet.
 
-## What's new (v1.0.0)
-First release.
+## What's new (v1.1.0)
+Faster photo capture, press-and-hold to keep shooting, photo-size (MP) button, and a neater camera layout.
 
 ## Permissions explained (for the Play Console declaration)
 - **Camera:** live preview, photos and videos
