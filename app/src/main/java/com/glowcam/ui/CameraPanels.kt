@@ -88,7 +88,7 @@ fun CapturePanel(
             color = TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
         )
 
-        SettingSwitch("Sharp mode", "Waits until you're steady, keeps the sharpest of 3 shots", settings.sharp.value) { settings.sharp.set(it) }
+        SettingSwitch("Sharp mode", "Image stabilisation, better noise and edge quality, and a hold-steady warning", settings.sharp.value) { settings.sharp.set(it) }
         SettingSwitch(
             "Original quality", if (front) "Rear camera only: saves the camera's untouched JPEG" else "Saves the camera's untouched JPEG when no effects are on",
             settings.original.value, enabled = !front,

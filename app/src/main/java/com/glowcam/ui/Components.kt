@@ -278,3 +278,17 @@ fun SheetHandle() {
         Box(Modifier.width(36.dp).height(4.dp).background(Color(0x55FFFFFF), CircleShape))
     }
 }
+
+/** Round top-bar button that shows the photo size, e.g. "12" over "MP". */
+@Composable
+fun MegapixelButton(mp: Int, onClick: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false, size: Dp = 48.dp) {
+    val bg by animateColorAsState(if (selected) Pink else Glass, label = "mpBg")
+    Column(
+        modifier.size(size).clip(CircleShape).background(bg).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(mp.toString(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp)
+        Text("MP", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 10.sp)
+    }
+}

@@ -650,8 +650,8 @@ fun CameraScreen(
                     // tap to step down through the camera's megapixel sizes, wrapping back to the maximum
                     val std = remember(front, aspect.wide) { engine.defaultMp(front, aspect.wide) }
                     val shown = if (maxRes && !front) mpOptions.first() else if (mpChoice in mpOptions) mpChoice else std
-                    GlassButton(
-                        Icons.Rounded.HighQuality, "Megapixels",
+                    MegapixelButton(
+                        shown,
                         {
                             if (maxRes && !front) {
                                 say("Turn off Original quality in Settings to pick a smaller size")
@@ -662,7 +662,7 @@ fun CameraScreen(
                                 say(if (next >= 30) "Photo size: $next MP (full sensor, saved untouched)" else "Photo size: $next MP")
                             }
                         },
-                        selected = shown != std, badge = "${shown}MP",
+                        selected = shown != std,
                     )
                 }
             }

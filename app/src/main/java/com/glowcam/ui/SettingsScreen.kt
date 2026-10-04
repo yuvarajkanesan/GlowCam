@@ -110,7 +110,7 @@ fun SettingsScreen(settings: AppSettings, onBack: () -> Unit) {
                 ChoiceRow("Camera sound", listOf("Off" to 0, "Soft" to 1, "Normal" to 2), settings.shutterLevel.value) { settings.shutterLevel.set(it) }
                 SettingSwitch("Volume keys take photos", "Press volume up or down as the shutter", settings.volumeShutter.value) { settings.volumeShutter.set(it) }
                 SettingSwitch("Touch to shoot", "Tap the viewfinder to take a photo", settings.touchShoot.value) { settings.touchShoot.set(it) }
-                SettingSwitch("Sharp mode", "Waits until you're steady and keeps the sharpest of 3 shots", settings.sharp.value) { settings.sharp.set(it) }
+                SettingSwitch("Sharp mode", "Image stabilisation, better noise and edge quality, and a hold-steady warning", settings.sharp.value) { settings.sharp.set(it) }
                 SettingSwitch("Original quality (rear camera)", "Saves the camera's untouched JPEG when no effects are on", settings.original.value) { settings.original.set(it) }
             }
             Section("PHOTO") {

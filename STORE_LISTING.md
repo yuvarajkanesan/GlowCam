@@ -32,7 +32,8 @@ PRO CAMERA CONTROLS
 - Tap to focus and drag to set brightness; long-press to lock focus and exposure
 - HDR and Night modes
 - Pro mode: manual ISO, shutter speed and white balance
-- Sharp mode: waits until you are steady and keeps the sharpest of 3 shots
+- Sharp mode: image stabilisation, better noise and edge quality, and a hold-steady warning
+- Press and hold the shutter to keep shooting
 - Original quality mode saves the camera's untouched JPEG
 - Choose your photo size in megapixels from the top bar
 - Grid, level and histogram guides
