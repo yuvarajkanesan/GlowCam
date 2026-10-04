@@ -152,6 +152,9 @@ class EffectProgram(oes: Boolean) {
         f1("uBlur", p.blur)
         i1("uRadialBlur", if (p.radialBlur) 1 else 0)
         f1("uVig", p.vignette)
+        GLES30.glUniform2f(loc("uPersp"), p.perspH, p.perspV)
+        f1("uSharp", p.sharpen)
+        f1("uGrain", p.grain)
 
         GLES30.glEnableVertexAttribArray(0)
         GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 0, quad)

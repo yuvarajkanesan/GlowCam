@@ -35,6 +35,7 @@ uniform float uAspect;      // upright source width / height
 uniform float uOutAspect;   // output width / height
 uniform vec4 uCrop;         // x y w h in source uv
 uniform float uStraighten;  // radians
+uniform vec2 uPersp;        // keystone tilt: x horizontal, y vertical, -1..1
 
 uniform int uFaceN;   uniform vec4 uFace[3];
 uniform int uMouthN;  uniform vec4 uMouth[3];
@@ -84,6 +85,8 @@ uniform float uSaturation;
 uniform float uBlur;
 uniform int uRadialBlur;
 uniform float uVig;
+uniform float uSharp;
+uniform float uGrain;
 
 const vec3 LUM = vec3(0.299, 0.587, 0.114);
 
@@ -247,6 +250,13 @@ void main() {
         float sn = sin(uStraighten);
         q = vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
         p = q / asp() + 0.5;
+    }
+
+    // ---- perspective: keystone tilt about the image centre (x = horizontal, y = vertical) ----
+    if (uPersp != vec2(0.0)) {
+        vec2 c0 = (p - 0.5) * asp();
+        float w = 1.0 + dot(uPersp * 0.6, c0 / asp().y);
+        p = c0 / max(w, 0.2) / asp() + 0.5;
     }
 
     // ---- face warps (slim, jaw, eyes) ----
@@ -498,6 +508,22 @@ void main() {
     c = (c - 0.5) * (1.0 + uContrast) + 0.5;
     float lum = dot(c, LUM);
     c = mix(vec3(lum), c, 1.0 + uSaturation);
+
+    // ---- sharpen: unsharp mask against the four neighbours, about one output pixel away ----
+    if (uSharp > 0.001) {
+        vec2 px = vec2(abs(dFdx(vOut.x)), abs(dFdy(vOut.y))) * uCrop.zw * 1.2;
+        vec3 centre = src(q);
+        vec3 ring = (src(q + vec2(px.x, 0.0)) + src(q - vec2(px.x, 0.0)) + src(q + vec2(0.0, px.y)) + src(q - vec2(0.0, px.y))) * 0.25;
+        c += (centre - ring) * uSharp * 2.5;
+    }
+
+    // ---- film grain ----
+    if (uGrain > 0.001) {
+        float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        // strongest in the mid-tones, like real grain
+        float mid = 1.0 - abs(dot(c, LUM) - 0.5) * 1.2;
+        c += (n - 0.5) * uGrain * 0.35 * clamp(mid, 0.3, 1.0);
+    }
 
     // ---- vignette ----
     float vig = uVig + uFB.z * uFMix;

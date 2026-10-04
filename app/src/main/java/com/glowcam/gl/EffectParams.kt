@@ -29,6 +29,8 @@ data class EffectParams(
     val blur: Float = 0f,
     val radialBlur: Boolean = false,
     val vignette: Float = 0f,
+    val sharpen: Float = 0f,
+    val grain: Float = 0f,
     // Retouch (0..1)
     val teeth: Float = 0f,
     val darkCircles: Float = 0f,
@@ -51,6 +53,8 @@ data class EffectParams(
     // Geometry
     val crop: CropRect = CropRect(),
     val straightenDeg: Float = 0f,
+    val perspH: Float = 0f,
+    val perspV: Float = 0f,
 ) {
     /** True when any effect needs face landmarks. */
     val needsFaces: Boolean

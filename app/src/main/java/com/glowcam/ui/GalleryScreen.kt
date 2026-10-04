@@ -35,6 +35,10 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -62,6 +66,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 data class MediaItem(val uri: Uri, val isVideo: Boolean, val dateAdded: Long)
+
+private enum class GalleryFilter(val label: String) { ALL("All"), PHOTOS("Photos"), VIDEOS("Videos"), FAVORITES("Favorites") }
 
 /** Everything GlowCam has saved (Pictures/GlowCam and Movies/GlowCam), newest first. */
 fun loadGalleryItems(context: Context): List<MediaItem> {
@@ -91,17 +97,29 @@ fun loadGalleryItems(context: Context): List<MediaItem> {
 @Composable
 fun GalleryScreen(refreshKey: Int, onBack: () -> Unit, onOpen: (Uri, Boolean) -> Unit, onDeleted: (Uri) -> Unit) {
     val context = LocalContext.current
-    var items by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    var allItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     val selected = remember { emptyList<Uri>().toMutableStateList() }
     var showDelete by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
 
     LaunchedEffect(refreshKey, reload) {
-        items = withContext(Dispatchers.IO) { loadGalleryItems(context) }
+        allItems = withContext(Dispatchers.IO) { loadGalleryItems(context) }
         loaded = true
     }
     val selecting = selected.isNotEmpty()
+    var filter by remember { mutableStateOf(GalleryFilter.ALL) }
+    var oldestFirst by remember { mutableStateOf(false) }
+    val items = allItems
+        .filter {
+            when (filter) {
+                GalleryFilter.ALL -> true
+                GalleryFilter.PHOTOS -> !it.isVideo
+                GalleryFilter.VIDEOS -> it.isVideo
+                GalleryFilter.FAVORITES -> Favorites.isFavorite(context, it.uri)
+            }
+        }
+        .let { if (oldestFirst) it.reversed() else it }
 
     Column(Modifier.fillMaxSize().background(Ink)) {
         Row(
@@ -119,10 +137,20 @@ fun GalleryScreen(refreshKey: Int, onBack: () -> Unit, onOpen: (Uri, Boolean) ->
                 GlassButton(Icons.Rounded.ArrowBack, "Back", onBack)
                 Text("Gallery", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (items.isNotEmpty()) Text("${items.size} items", color = TextDim, fontSize = 13.sp)
+                GlassButton(Icons.Rounded.SwapVert, if (oldestFirst) "Oldest first" else "Newest first", { oldestFirst = !oldestFirst })
             }
         }
 
-        if (loaded && items.isEmpty()) {
+        if (allItems.isNotEmpty() && !selecting) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                for (f in GalleryFilter.values()) GlowChip(f.label, filter == f) { filter = f }
+            }
+        }
+
+        if (loaded && allItems.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
                 verticalArrangement = Arrangement.Center,
@@ -164,6 +192,12 @@ fun GalleryScreen(refreshKey: Int, onBack: () -> Unit, onOpen: (Uri, Boolean) ->
                             Icon(
                                 Icons.Rounded.PlayArrow, null, tint = Color.White,
                                 modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).size(22.dp).background(Color(0x99000000), CircleShape),
+                            )
+                        }
+                        if (Favorites.isFavorite(context, item.uri)) {
+                            Icon(
+                                Icons.Rounded.Favorite, null, tint = Pink,
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).size(18.dp),
                             )
                         }
                         if (selecting) {

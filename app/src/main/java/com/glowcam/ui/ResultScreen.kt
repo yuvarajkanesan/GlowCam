@@ -6,7 +6,25 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.text.format.Formatter
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +80,7 @@ import com.glowcam.camera.Sharing
 import java.text.DateFormat
 import java.util.Date
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ResultScreen(
     uri: Uri,
@@ -71,7 +90,29 @@ fun ResultScreen(
     onDeleted: (Uri) -> Unit,
 ) {
     val context = LocalContext.current
-    val bmp = rememberBitmap(uri, isVideo, 1600)
+    // Swipe left for the next older item, right for the newer one, like a normal gallery.
+    var items by remember { mutableStateOf(listOf(MediaItem(uri, isVideo, 0))) }
+    val pager = rememberPagerState { items.size }
+    LaunchedEffect(Unit) {
+        val all = withContext(Dispatchers.IO) { loadGalleryItems(context) }
+        val idx = all.indexOfFirst { it.uri == uri }
+        if (idx >= 0) {
+            items = all
+            pager.scrollToPage(idx)
+        }
+    }
+    val current = items.getOrNull(pager.currentPage) ?: items.first()
+    val uri = current.uri
+    val isVideo = current.isVideo
+    var playing by remember { mutableStateOf(false) }
+    LaunchedEffect(playing, items.size) {
+        while (playing && items.size > 1) {
+            delay(3000)
+            // Photos only advance by themselves; wraps back to the newest at the end.
+            pager.animateScrollToPage((pager.currentPage + 1) % items.size)
+        }
+        if (items.size <= 1) playing = false
+    }
     var menu by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
@@ -110,6 +151,13 @@ fun ResultScreen(
                         onClick = { menu = false; Sharing.share(context, uri, isVideo, ShareTarget.MORE) },
                     )
                     HorizontalDivider(color = Color(0x33FFFFFF))
+                    if (items.size > 1) {
+                        DropdownMenuItem(
+                            text = { Text(if (playing) "Stop slideshow" else "Slideshow", color = Color.White) },
+                            leadingIcon = { Icon(Icons.Rounded.PlayArrow, null, tint = Color.White) },
+                            onClick = { menu = false; playing = !playing },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Open in Gallery", color = Color.White) },
                         leadingIcon = { Icon(Icons.Rounded.OpenInNew, null, tint = Color.White) },
@@ -138,17 +186,59 @@ fun ResultScreen(
         }
 
         // ---------- preview ----------
-        Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-            Box(Modifier.clip(RoundedCornerShape(22.dp)).background(Color(0xFF1B1B21))) {
-                bmp?.let {
-                    Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                }
-                if (isVideo) {
-                    Box(
-                        Modifier.align(Alignment.Center).size(64.dp).clip(CircleShape).background(GlassStrong)
-                            .clickable { Sharing.view(context, uri, true) },
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(36.dp)) }
+        HorizontalPager(
+            state = pager,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            key = { items.getOrNull(it)?.uri?.toString() ?: it },
+        ) { page ->
+            val item = items[page]
+            val bmp = rememberBitmap(item.uri, item.isVideo, 1600)
+            var zoom by remember { mutableStateOf(1f) }
+            var pan by remember { mutableStateOf(Offset.Zero) }
+            // Back to fit when the user swipes away from this page.
+            LaunchedEffect(pager.currentPage) { if (pager.currentPage != page) { zoom = 1f; pan = Offset.Zero } }
+            Box(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)
+                    .pointerInput(item.isVideo) {
+                        if (item.isVideo) return@pointerInput
+                        detectTapGestures(onDoubleTap = {
+                            if (zoom > 1f) { zoom = 1f; pan = Offset.Zero } else zoom = 2.5f
+                        })
+                    }
+                    .pointerInput(item.isVideo) {
+                        if (item.isVideo) return@pointerInput
+                        // Only claims the touch for pinches, or for dragging once zoomed in,
+                        // so a one-finger swipe at normal size still turns the page.
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                val multi = event.changes.size > 1
+                                if (multi || zoom > 1f) {
+                                    val z = event.calculateZoom()
+                                    val p = event.calculatePan()
+                                    zoom = (zoom * z).coerceIn(1f, 6f)
+                                    pan = if (zoom > 1f) pan + p else Offset.Zero
+                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
+                            if (zoom <= 1.01f) { zoom = 1f; pan = Offset.Zero }
+                        }
+                    }
+                    .graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.clip(RoundedCornerShape(22.dp)).background(Color(0xFF1B1B21))) {
+                    bmp?.let {
+                        Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                    }
+                    if (item.isVideo) {
+                        Box(
+                            Modifier.align(Alignment.Center).size(64.dp).clip(CircleShape).background(GlassStrong)
+                                .clickable { Sharing.view(context, item.uri, true) },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(36.dp)) }
+                    }
                 }
             }
         }
@@ -158,6 +248,11 @@ fun ResultScreen(
             Modifier.widthIn(max = 560.dp).fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
+            val fav = Favorites.isFavorite(context, uri)
+            ActionButton(
+                if (fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favorite",
+                tint = if (fav) Pink else Color.White,
+            ) { Favorites.toggle(context, uri) }
             ActionButton(Icons.Rounded.Share, "Share") { Sharing.share(context, uri, isVideo, ShareTarget.MORE) }
             if (!isVideo) ActionButton(Icons.Rounded.Edit, "Edit") { onEdit(uri) }
             ActionButton(Icons.Rounded.Delete, "Delete", tint = Danger) { showDelete = true }

@@ -36,6 +36,9 @@ import androidx.compose.material.icons.rounded.FilterVintage
 import androidx.compose.material.icons.rounded.Flip
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Redo
+import androidx.compose.material.icons.rounded.Draw
+import kotlin.math.roundToInt
+import androidx.compose.material.icons.rounded.RotateLeft
 import androidx.compose.material.icons.rounded.RotateRight
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.Tune
@@ -81,11 +84,11 @@ import kotlinx.coroutines.withContext
 import kotlin.math.cos
 import kotlin.math.sin
 
-private enum class Tool(val label: String) { BEAUTY("Beauty"), MAKEUP("Makeup"), FILTER("Filters"), LOOKS("Looks"), BACKGROUND("Background"), ADJUST("Adjust"), RETOUCH("Retouch"), TEXT("Text"), CROP("Crop") }
+private enum class Tool(val label: String) { BEAUTY("Beauty"), MAKEUP("Makeup"), FILTER("Filters"), LOOKS("Looks"), BACKGROUND("Background"), ADJUST("Adjust"), RETOUCH("Retouch"), TEXT("Text"), DRAW("Draw"), CROP("Crop") }
 
 private enum class RetouchTool { BLEMISH, TEETH, CIRCLES, REDEYE }
 
-private data class Snapshot(val params: EffectParams, val rot: Int, val flip: Boolean, val overlays: List<Overlay> = emptyList())
+private data class Snapshot(val params: EffectParams, val rot: Int, val flip: Boolean, val overlays: List<Overlay> = emptyList(), val strokes: List<Stroke> = emptyList())
 
 private fun transform(src: Bitmap, rot: Int, flip: Boolean): Bitmap {
     if (rot == 0 && !flip) return src
@@ -124,20 +127,23 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
     var showExport by remember { mutableStateOf(false) }
 
     var overlays by remember { mutableStateOf<List<Overlay>>(emptyList()) }
+    var strokes by remember { mutableStateOf<List<Stroke>>(emptyList()) }
+    var brushColor by remember { mutableStateOf(0xFFFF5FA2.toInt()) }
+    var brushWidth by remember { mutableStateOf(0.012f) }
     var selectedOverlay by remember { mutableStateOf<Int?>(null) }
     var nextOverlayId by remember { mutableStateOf(1) }
     var undo by remember { mutableStateOf(listOf(Snapshot(EffectParams(), 0, false))) }
     var redo by remember { mutableStateOf<List<Snapshot>>(emptyList()) }
 
     fun commit() {
-        val cur = Snapshot(params, rot, flip, overlays)
+        val cur = Snapshot(params, rot, flip, overlays, strokes)
         if (undo.lastOrNull() != cur) {
             undo = undo + cur
             redo = emptyList()
         }
     }
     fun restore(s: Snapshot) {
-        params = s.params; rot = s.rot; flip = s.flip; overlays = s.overlays
+        params = s.params; rot = s.rot; flip = s.flip; overlays = s.overlays; strokes = s.strokes
         cropDraft = NRect.from(s.params.crop)
     }
     fun doUndo() {
@@ -214,7 +220,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
             try {
                 val subject = if (params.needsMask) (mask ?: segmenter.segment(s)) else null
                 val rendered = OfflineRenderer.render(s, params, faces, minOf(maxSide, DeviceProfile.maxPhotoSide(context)), subject)
-                val out = withContext(Dispatchers.Default) { drawOverlays(rendered, overlays) }
+                val out = withContext(Dispatchers.Default) { drawOverlays(drawStrokes(rendered, strokes), overlays) }
                 val saved = withContext(Dispatchers.IO) { MediaSaver.saveJpeg(context, out, 97) }
                 onSaved(saved)
             } catch (e: Exception) {
@@ -254,7 +260,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
             GlassButton(Icons.Rounded.Redo, "Redo", { doRedo() }, enabled = redo.isNotEmpty())
             GlassButton(
                 Icons.Rounded.RestartAlt, "Reset all",
-                { params = EffectParams(); rot = 0; flip = false; overlays = emptyList(); selectedOverlay = null; cropDraft = NRect(0f, 0f, 1f, 1f); commit() },
+                { params = EffectParams(); rot = 0; flip = false; overlays = emptyList(); strokes = emptyList(); selectedOverlay = null; cropDraft = NRect(0f, 0f, 1f, 1f); commit() },
             )
             GradientButton("Save", Icons.Rounded.Check, { showExport = true })
         }
@@ -273,6 +279,12 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                 val imgRect = fitRect(boxSize.width - 2 * pad, boxSize.height - 2 * pad, pv.width.toFloat() / pv.height)
                     .translate(pad, pad)
 
+                if (!inCrop && (strokes.isNotEmpty() || tool == Tool.DRAW)) {
+                    DrawLayer(
+                        strokes, imgRect, interactive = tool == Tool.DRAW, color = brushColor, width = brushWidth,
+                        onStroke = { strokes = strokes + it; commit() },
+                    )
+                }
                 if (!inCrop && overlays.isNotEmpty()) {
                     OverlayLayer(
                         overlays, selectedOverlay, imgRect, interactive = tool == Tool.TEXT,
@@ -356,6 +368,11 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                         onDelete = { id -> overlays = overlays.filter { it.id != id }; selectedOverlay = null; commit() },
                         onCommit = { commit() },
                     )
+                    Tool.DRAW -> DrawPanel(
+                        color = brushColor, width = brushWidth, hasStrokes = strokes.isNotEmpty(),
+                        onColor = { brushColor = it }, onWidth = { brushWidth = it },
+                        onClear = { strokes = emptyList(); commit() },
+                    )
                     Tool.MAKEUP -> {
                         MakeupPanel(params, { params = it }, { commit() })
                         if (faces.isEmpty() && source != null) NoFaceHint()
@@ -385,6 +402,8 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                             GlowChip("Focus centre", params.radialBlur) { params = params.copy(radialBlur = true); commit() }
                         }
                         LabeledSlider("Vignette", params.vignette, { params = params.copy(vignette = it) }, onFinished = { commit() })
+                        LabeledSlider("Sharpen", params.sharpen, { params = params.copy(sharpen = it) }, onFinished = { commit() })
+                        LabeledSlider("Grain", params.grain, { params = params.copy(grain = it) }, onFinished = { commit() })
                     }
                     Tool.RETOUCH -> {
                         Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -433,7 +452,12 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                             GlowChip("9:16", cropRatio == 9f / 16f) { setRatio(9f / 16f) }
                         }
                         Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GlowChip("Rotate 90°", icon = Icons.Rounded.RotateRight) {
+                            GlowChip("Rotate left", icon = Icons.Rounded.RotateLeft) {
+                                rot = (rot + 3) % 4
+                                params = params.copy(crop = CropRect(), blemishes = emptyList(), straightenDeg = 0f)
+                                cropDraft = NRect(0f, 0f, 1f, 1f); commit()
+                            }
+                            GlowChip("Rotate right", icon = Icons.Rounded.RotateRight) {
                                 rot = (rot + 1) % 4
                                 params = params.copy(crop = CropRect(), blemishes = emptyList(), straightenDeg = 0f)
                                 cropDraft = NRect(0f, 0f, 1f, 1f); commit()
@@ -443,9 +467,16 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                                 params = params.copy(crop = CropRect(), blemishes = emptyList())
                                 cropDraft = NRect(0f, 0f, 1f, 1f); commit()
                             }
+                            // Flip + 180° turn is a mirror top-to-bottom.
+                            GlowChip("Flip vertical", icon = Icons.Rounded.Flip) {
+                                flip = !flip
+                                rot = (rot + 2) % 4
+                                params = params.copy(crop = CropRect(), blemishes = emptyList())
+                                cropDraft = NRect(0f, 0f, 1f, 1f); commit()
+                            }
                             GlowChip("Reset crop") {
                                 cropRatio = null; cropDraft = NRect(0f, 0f, 1f, 1f)
-                                params = params.copy(crop = CropRect(), straightenDeg = 0f); commit()
+                                params = params.copy(crop = CropRect(), straightenDeg = 0f, perspH = 0f, perspV = 0f); commit()
                             }
                         }
                         LabeledSlider(
@@ -456,6 +487,15 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                                 cropDraft = NRect.from(c)
                             },
                             range = -15f..15f, onFinished = { commit() }, display = { "%.1f°".format(it) },
+                        )
+                        // Straightens tilted buildings and documents. Crop afterwards to trim the stretched edges.
+                        LabeledSlider(
+                            "Perspective ↕", params.perspV, { params = params.copy(perspV = it) },
+                            range = -1f..1f, onFinished = { commit() }, display = { (it * 100).roundToInt().toString() },
+                        )
+                        LabeledSlider(
+                            "Perspective ↔", params.perspH, { params = params.copy(perspH = it) },
+                            range = -1f..1f, onFinished = { commit() }, display = { (it * 100).roundToInt().toString() },
                         )
                     }
                 }
@@ -473,6 +513,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                     Tool.ADJUST to Icons.Rounded.Tune,
                     Tool.RETOUCH to Icons.Rounded.AutoFixHigh,
                     Tool.TEXT to Icons.Rounded.TextFields,
+                    Tool.DRAW to Icons.Rounded.Draw,
                     Tool.CROP to Icons.Rounded.Crop,
                 )
                 for (t in Tool.values()) {
