@@ -101,7 +101,7 @@ fun ToolTab(icon: ImageVector, label: String, selected: Boolean, onClick: (() ->
             Modifier.size(40.dp).clip(CircleShape).then(if (selected) Modifier.background(BrandBrush) else Modifier.background(Color(0x22FFFFFF))),
             contentAlignment = Alignment.Center,
         ) { Icon(icon, label, tint = Color.White, modifier = Modifier.size(22.dp)) }
-        Text(label, color = if (selected) Color.White else TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp), maxLines = 1)
+        Text(label, color = if (selected) Color.White else TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp), maxLines = 1, softWrap = false)
     }
 }
 

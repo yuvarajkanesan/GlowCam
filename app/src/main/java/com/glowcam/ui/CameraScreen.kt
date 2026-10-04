@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -202,6 +203,7 @@ fun CameraScreen(
     var shaky by remember { mutableStateOf(false) }
     var thumbs by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
     var thumbsFront by remember { mutableStateOf(front) }
+    var lastShotCount by remember { mutableIntStateOf(0) }
 
     // zoom / exposure / focus
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -357,7 +359,7 @@ fun CameraScreen(
         w.attributes = lp
     }
 
-    suspend fun doCapture() {
+    suspend fun doCapture(fast: Boolean = false) {
         if (busy || !ensureStorage()) return
         busy = true
         try {
@@ -368,11 +370,12 @@ fun CameraScreen(
             val bigCapture = engine.captureSize()?.let { it.width.toLong() * it.height > 30_000_000L } == true
             val full = (maxRes && !front) || bigCapture
             val night = shootMode == ShootMode.NIGHT
-            val shots = if (sharp && !(flash && !front) && !full && !night) DeviceProfile.burstShots(context) else 1
+            // one shot, taken immediately (no waiting to be steady, no multi-shot burst); Night mode still waits
+            val shots = 1
             val sound = true
-            if (sharp || night) {
-                val ok = if (night) motion.awaitSteady(2200, 0.08f) else motion.awaitSteady()
-                if (!ok) say("Hold steady for a sharper photo")
+            if (night && !fast) {
+                say("Night shot, hold still…")
+                if (!motion.awaitSteady(2200, 0.08f)) say("Hold steady for a sharper photo")
             }
             val quality = settings.photoQuality.value
             val p0 = (if (compare) EffectParams() else params).withoutGeometry()
@@ -383,7 +386,8 @@ fun CameraScreen(
                 if (saved != null) {
                     if (settings.locationTag.value) withContext(Dispatchers.IO) { LocationTagger.tag(context, saved) }
                     onLastChanged(saved to false)
-                    say("Saved the camera’s original photo, untouched")
+                    lastShotCount++
+                    if (!fast) say("Saved the camera’s original photo, untouched")
                 } else say("Couldn't take the photo. Please try again.")
                 return
             }
@@ -409,7 +413,8 @@ fun CameraScreen(
                 MediaSaver.saveJpeg(context, out, quality).also { if (settings.locationTag.value) LocationTagger.tag(context, it) }
             }
             onLastChanged(uri to false)
-            say("Saved to Pictures/GlowCam")
+            lastShotCount++
+            if (!fast) say("Saved to Pictures/GlowCam")
         } catch (e: OutOfMemoryError) {
             say("Not enough memory for that photo. Close other apps or turn off Original quality.")
         } catch (e: Exception) {
@@ -441,6 +446,24 @@ fun CameraScreen(
             if (!micGranted) say("Recording without sound (microphone not allowed)")
         } catch (e: Exception) {
             say("Can't record: ${e.message}")
+        }
+    }
+
+    // press and hold the shutter: keep taking photos until released (max 30)
+    val holding = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    fun startBurst() {
+        if (mode != Mode.PHOTO || recording || countdown > 0 || !holding.compareAndSet(false, true)) return
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        scope.launch {
+            var n = 0
+            while (holding.get() && n < 30) {
+                if (busy) { delay(30); continue }
+                val before = lastShotCount
+                doCapture(fast = true)
+                if (lastShotCount != before) n++
+            }
+            holding.set(false)
+            if (n > 0) say("Burst: $n photos saved")
         }
     }
 
@@ -606,10 +629,10 @@ fun CameraScreen(
         Row(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().background(ScrimTop).statusBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            run {
                 GlassButton(
                     if (front) Icons.Rounded.LightMode else if (flash) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
                     if (front) "Screen glow" else "Flash", { flash = !flash }, selected = flash,
@@ -643,7 +666,7 @@ fun CameraScreen(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            run {
                 var importMenu by remember { mutableStateOf(false) }
                 Box {
                     GlassButton(Icons.Rounded.PhotoLibrary, "Edit or collage", { importMenu = true })
@@ -776,19 +799,19 @@ fun CameraScreen(
             // tool tabs
             Row(
                 Modifier.widthIn(max = 560.dp).fillMaxWidth().background(SheetBg).horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ToolTab(Icons.Rounded.Face, "Beauty", panel == Panel.BEAUTY, { panel = if (panel == Panel.BEAUTY) null else Panel.BEAUTY })
-                ToolTab(Icons.Rounded.Brush, "Makeup", panel == Panel.MAKEUP, { panel = if (panel == Panel.MAKEUP) null else Panel.MAKEUP })
-                ToolTab(Icons.Rounded.FilterVintage, "Filters", panel == Panel.FILTERS, { panel = if (panel == Panel.FILTERS) null else Panel.FILTERS })
-                ToolTab(Icons.Rounded.AutoAwesome, "Looks", panel == Panel.LOOKS, { panel = if (panel == Panel.LOOKS) null else Panel.LOOKS })
-                ToolTab(Icons.Rounded.Wallpaper, "Background", panel == Panel.BACKGROUND, { panel = if (panel == Panel.BACKGROUND) null else Panel.BACKGROUND })
-                ToolTab(Icons.Rounded.Tune, "Capture", panel == Panel.CAPTURE, { panel = if (panel == Panel.CAPTURE) null else Panel.CAPTURE })
+                ToolTab(Icons.Rounded.Face, "Beauty", panel == Panel.BEAUTY, { panel = if (panel == Panel.BEAUTY) null else Panel.BEAUTY }, Modifier.width(68.dp))
+                ToolTab(Icons.Rounded.Brush, "Makeup", panel == Panel.MAKEUP, { panel = if (panel == Panel.MAKEUP) null else Panel.MAKEUP }, Modifier.width(68.dp))
+                ToolTab(Icons.Rounded.FilterVintage, "Filters", panel == Panel.FILTERS, { panel = if (panel == Panel.FILTERS) null else Panel.FILTERS }, Modifier.width(68.dp))
+                ToolTab(Icons.Rounded.AutoAwesome, "Looks", panel == Panel.LOOKS, { panel = if (panel == Panel.LOOKS) null else Panel.LOOKS }, Modifier.width(68.dp))
+                ToolTab(Icons.Rounded.RestartAlt, "Reset", false, { params = EffectParams(); say("Effects reset") }, Modifier.width(68.dp))
+                ToolTab(Icons.Rounded.Tune, "Capture", panel == Panel.CAPTURE, { panel = if (panel == Panel.CAPTURE) null else Panel.CAPTURE }, Modifier.width(68.dp))
                 ToolTab(
                     Icons.Rounded.Compare, "Compare", compare, null,
-                    Modifier.pointerInput(Unit) {
+                    Modifier.width(68.dp).pointerInput(Unit) {
                         detectTapGestures(onPress = {
                             compare = true
                             tryAwaitRelease()
@@ -796,7 +819,7 @@ fun CameraScreen(
                         })
                     },
                 )
-                ToolTab(Icons.Rounded.RestartAlt, "Reset", false, { params = EffectParams(); say("Effects reset") })
+                ToolTab(Icons.Rounded.Wallpaper, "Background", panel == Panel.BACKGROUND, { panel = if (panel == Panel.BACKGROUND) null else Panel.BACKGROUND }, Modifier.width(68.dp))
             }
 
             // mode switch
@@ -826,7 +849,10 @@ fun CameraScreen(
                     if (last?.second == true) Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(24.dp))
                     if (last == null) Icon(Icons.Rounded.PhotoLibrary, null, tint = Color(0x88FFFFFF), modifier = Modifier.size(22.dp))
                 }
-                Shutter(video = mode == Mode.VIDEO, recording = recording, progress = recSecs / 60f, busy = busy, onClick = ::onShutter)
+                Shutter(
+                    video = mode == Mode.VIDEO, recording = recording, progress = recSecs / 60f, busy = busy, onClick = ::onShutter,
+                    onHoldStart = ::startBurst, onHoldEnd = { holding.set(false) },
+                )
                 GlassButton(Icons.Rounded.FlipCameraAndroid, "Switch camera", { settings.front.set(!front) }, size = 54.dp, enabled = !recording)
             }
         }

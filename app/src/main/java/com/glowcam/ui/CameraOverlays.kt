@@ -30,11 +30,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -197,13 +199,28 @@ fun ModeSwitch(mode: Mode, enabled: Boolean, onMode: (Mode) -> Unit) {
 }
 
 @Composable
-fun Shutter(video: Boolean, recording: Boolean, progress: Float, busy: Boolean, onClick: () -> Unit) {
+fun Shutter(
+    video: Boolean, recording: Boolean, progress: Float, busy: Boolean, onClick: () -> Unit,
+    onHoldStart: () -> Unit = {}, onHoldEnd: () -> Unit = {},
+) {
+    // the gesture listener lives across recompositions (busy flips during a burst), so read current values
+    val latestBusy = rememberUpdatedState(busy)
+    val latestClick = rememberUpdatedState(onClick)
+    val latestHoldStart = rememberUpdatedState(onHoldStart)
+    val latestHoldEnd = rememberUpdatedState(onHoldEnd)
     val scale by animateFloatAsState(if (busy) 0.9f else 1f, label = "shutterScale")
     val inner by animateDpAsState(if (recording) 30.dp else 62.dp, label = "shutterInner")
     val corner by animateDpAsState(if (recording) 8.dp else 31.dp, label = "shutterCorner")
     Box(
         Modifier.size(84.dp).scale(scale).alpha(if (busy) 0.6f else 1f)
-            .clickable(enabled = !busy, interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+            // tap = one shot; press and hold = keep shooting until released (the hold callbacks)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = { tryAwaitRelease(); latestHoldEnd.value() },
+                    onLongPress = { latestHoldStart.value() },
+                    onTap = { if (!latestBusy.value) latestClick.value() },
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {

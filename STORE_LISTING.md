@@ -9,7 +9,8 @@ Ready to paste into Play Console. Graphics are in `store/`.
 - **Supports:** Android 5.0 and up, phones and tablets (portrait)
 - **Tags:** Camera, Photo editor, Selfie, Beauty, Filters
 - **Content rating:** Everyone (no violence, no user-generated content shared inside the app)
-- **Contact email / privacy policy URL:** add yours (publish `PRIVACY.md` at a public URL)
+- **Contact email:** yuvaraj8747@gmail.com
+- **Privacy policy URL:** host `store/privacy-policy.html` at a public URL and paste that link
 
 ## Full description (max 4000)
 
@@ -33,6 +34,7 @@ PRO CAMERA CONTROLS
 - Pro mode: manual ISO, shutter speed and white balance
 - Sharp mode: waits until you are steady and keeps the sharpest of 3 shots
 - Original quality mode saves the camera's untouched JPEG
+- Choose your photo size in megapixels from the top bar
 - Grid, level and histogram guides
 - Photo, video up to 4K, timer, touch-to-shoot, screen-glow flash for selfies
 

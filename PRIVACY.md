@@ -41,4 +41,4 @@ GlowCam does not collect any personal information from anyone, including childre
 
 ## Contact
 
-Add your support email here before publishing.
+yuvaraj8747@gmail.com
