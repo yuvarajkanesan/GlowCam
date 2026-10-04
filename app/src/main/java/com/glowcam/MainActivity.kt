@@ -31,6 +31,7 @@ import com.glowcam.ui.GlowTheme
 import com.glowcam.ui.loadGalleryItems
 import com.glowcam.ui.ResultScreen
 import com.glowcam.ui.SettingsScreen
+import com.glowcam.ui.WelcomeTips
 
 class MainActivity : ComponentActivity() {
     /** Image handed to us by another app ("Edit with GlowCam" / Share). */
@@ -137,6 +138,8 @@ fun GlowCamApp(
         onDispose { onCameraVisible(false) }
     }
     if (stack.size > 1) BackHandler { pop() }
+
+    if (!settings.tipsSeen.value) WelcomeTips(onDone = { settings.tipsSeen.set(true) })
 
     when (val s = screen) {
         Screen.Camera -> CameraScreen(

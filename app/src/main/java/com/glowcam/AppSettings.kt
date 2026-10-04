@@ -44,6 +44,9 @@ class AppSettings(context: Context) {
     val showLevel = BoolPref(p, "level", false)
     val showHistogram = BoolPref(p, "histogram", false)
 
+    /** Set once the first-run tips have been shown, so they appear only on a fresh install. */
+    val tipsSeen = BoolPref(p, "tips_seen", false)
+
     /** 0 off, 1 thirds, 2 golden ratio, 3 diagonals. */
     val gridStyle = IntPref(p, "grid_style", 0)
 
