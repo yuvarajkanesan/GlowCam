@@ -14,8 +14,9 @@ android {
         applicationId = "com.glowcam"
         minSdk = 21
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.3.0"
+        versionCode = 6
+        versionName = "1.4.0"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
     // Release signing: put your real key details in keystore.properties (see RELEASE.md).
@@ -37,6 +38,14 @@ android {
     }
 
     buildTypes {
+        // Test build that installs next to the real app (com.glowcam.qa) so it never replaces or removes it.
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-qa"
+            manifestPlaceholders["appLabel"] = "GlowCam QA"
+            matchingFallbacks += "debug"
+        }
         release {
             // Shrinking and obfuscation are on by default. Debug a release-only problem with: -PminifyRelease=false
             val minify = (project.findProperty("minifyRelease") as String?) != "false"

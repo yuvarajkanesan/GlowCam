@@ -162,6 +162,8 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
         }
     }
 
+    val leave = rememberLeaveGuard(hasChanges = undo.size > 1 && !exporting, onLeave = onClose)
+
     LaunchedEffect(uri) {
         original = withContext(Dispatchers.IO) { ImageLoad.loadBitmap(context, uri, DeviceProfile.maxEditSide(context)) }
         if (original == null) {
@@ -212,7 +214,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
 
     val srcAspect = source?.let { it.width.toFloat() / it.height } ?: 1f
 
-    fun doExport(maxSide: Int) {
+    fun doExport(maxSide: Int, png: Boolean = false) {
         val s = source ?: return
         showExport = false
         exporting = true
@@ -221,7 +223,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                 val subject = if (params.needsMask) (mask ?: segmenter.segment(s)) else null
                 val rendered = OfflineRenderer.render(s, params, faces, minOf(maxSide, DeviceProfile.maxPhotoSide(context)), subject)
                 val out = withContext(Dispatchers.Default) { drawOverlays(drawStrokes(rendered, strokes), overlays) }
-                val saved = withContext(Dispatchers.IO) { MediaSaver.saveJpeg(context, out, 97) }
+                val saved = withContext(Dispatchers.IO) { if (png) MediaSaver.savePng(context, out) else MediaSaver.saveJpeg(context, out, 97) }
                 onSaved(saved)
             } catch (e: Exception) {
                 Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -254,7 +256,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            GlassButton(Icons.Rounded.Close, "Close", onClose)
+            GlassButton(Icons.Rounded.Close, "Close", leave)
             Box(Modifier.weight(1f))
             GlassButton(Icons.Rounded.Undo, "Undo", { doUndo() }, enabled = undo.size > 1)
             GlassButton(Icons.Rounded.Redo, "Redo", { doRedo() }, enabled = redo.isNotEmpty())
@@ -279,13 +281,13 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                 val imgRect = fitRect(boxSize.width - 2 * pad, boxSize.height - 2 * pad, pv.width.toFloat() / pv.height)
                     .translate(pad, pad)
 
-                if (!inCrop && (strokes.isNotEmpty() || tool == Tool.DRAW)) {
+                if (!inCrop && !showOriginal && (strokes.isNotEmpty() || tool == Tool.DRAW)) {
                     DrawLayer(
                         strokes, imgRect, interactive = tool == Tool.DRAW, color = brushColor, width = brushWidth,
                         onStroke = { strokes = strokes + it; commit() },
                     )
                 }
-                if (!inCrop && overlays.isNotEmpty()) {
+                if (!inCrop && !showOriginal && overlays.isNotEmpty()) {
                     OverlayLayer(
                         overlays, selectedOverlay, imgRect, interactive = tool == Tool.TEXT,
                         onSelect = { selectedOverlay = it },
@@ -328,7 +330,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                         })
                     },
             ) {
-                GlassButton(Icons.Rounded.Compare, "Hold to see the original", {}, selected = showOriginal, size = 46.dp)
+                GlassButton(Icons.Rounded.Compare, "Hold to see the original", null, selected = showOriginal, size = 46.dp)
             }
             if (exporting) {
                 Box(Modifier.fillMaxSize().background(Color(0xAA000000)), contentAlignment = Alignment.Center) {
@@ -446,6 +448,8 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                             }
                             GlowChip("Free", cropRatio == null) { setRatio(null) }
                             GlowChip("1:1", cropRatio == 1f) { setRatio(1f) }
+                            GlowChip("4:5", cropRatio == 4f / 5f) { setRatio(4f / 5f) }
+                            GlowChip("5:4", cropRatio == 5f / 4f) { setRatio(5f / 4f) }
                             GlowChip("4:3", cropRatio == 4f / 3f) { setRatio(4f / 3f) }
                             GlowChip("3:4", cropRatio == 3f / 4f) { setRatio(3f / 4f) }
                             GlowChip("16:9", cropRatio == 16f / 9f) { setRatio(16f / 9f) }
@@ -538,6 +542,7 @@ fun EditorScreen(uri: Uri, onClose: () -> Unit, onSaved: (Uri) -> Unit) {
                     TextButton(onClick = { doExport(1080) }) { Text("Standard – 1080 px") }
                     TextButton(onClick = { doExport(2560) }) { Text("High – 2560 px") }
                     TextButton(onClick = { doExport(4096) }) { Text("Original – best quality") }
+                    TextButton(onClick = { doExport(4096, png = true) }) { Text("Original – lossless PNG (large file)") }
                 }
             },
             confirmButton = {},

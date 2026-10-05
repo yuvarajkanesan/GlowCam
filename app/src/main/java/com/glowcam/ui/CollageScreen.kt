@@ -128,6 +128,8 @@ fun CollageScreen(onBack: () -> Unit, onSaved: (Uri) -> Unit) {
     val layouts = remember(uris.size) { if (uris.isEmpty()) emptyList() else layoutsFor(uris.size) }
     val cells = layouts.getOrNull(layoutIndex.coerceIn(0, (layouts.size - 1).coerceAtLeast(0))) ?: emptyList()
 
+    val leave = rememberLeaveGuard(hasChanges = uris.isNotEmpty() && !saving, onLeave = onBack)
+
     LaunchedEffect(uris) {
         bitmaps = withContext(Dispatchers.IO) { uris.mapNotNull { ImageLoad.loadBitmap(context, it, 1080) } }
     }
@@ -138,7 +140,7 @@ fun CollageScreen(onBack: () -> Unit, onSaved: (Uri) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            GlassButton(Icons.Rounded.ArrowBack, "Back", onBack)
+            GlassButton(Icons.Rounded.ArrowBack, "Back", leave)
             Text("Collage", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             if (bitmaps.isNotEmpty() && bitmaps.size == uris.size) {
                 GradientButton("Save", Icons.Rounded.Check, {

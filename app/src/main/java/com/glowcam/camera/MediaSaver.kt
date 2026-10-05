@@ -57,6 +57,19 @@ object MediaSaver {
         return uri
     }
 
+    /** Saves [bmp] as a lossless PNG into Pictures/GlowCam and returns its content Uri. */
+    fun savePng(context: Context, bmp: Bitmap): Uri {
+        val resolver = context.contentResolver
+        val values = newValues("GlowCam_${stamp()}.png", "image/png", video = false, pending = true)
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: error("Could not create media entry")
+        resolver.openOutputStream(uri)!!.use { out ->
+            check(bmp.compress(Bitmap.CompressFormat.PNG, 100, out)) { "PNG encode failed" }
+        }
+        finish(context, uri)
+        return uri
+    }
+
     /** Creates a pending video entry in Movies/GlowCam. Call [finishVideo] when the file is complete. */
     fun createVideo(context: Context): Uri =
         context.contentResolver.insert(

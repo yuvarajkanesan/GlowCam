@@ -25,7 +25,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -379,8 +381,10 @@ fun CameraScreen(
             }
             val quality = settings.photoQuality.value
             val p0 = (if (compare) EffectParams() else params).withoutGeometry()
-            if (full && aspect == Aspect.R4_3 && p0.isIdentity) {
-                // no effects: save the camera's original JPEG untouched
+            // no effects: save the camera's original JPEG untouched at the full chosen MP (any size, 4:3 or 16:9).
+            // Filters and 1:1 crops go through the bitmap path below, which reduces the size.
+            val untouched = p0.isIdentity && aspect != Aspect.R1_1 && (full || !(front && settings.mirrorSelfie.value))
+            if (untouched) {
                 val saved = engine.takePhotoToGallery(flash && !front, sound)
                 glow = false; setScreenBright(false)
                 if (saved != null) {
@@ -422,6 +426,16 @@ fun CameraScreen(
         } finally {
             busy = false; glow = false; setScreenBright(false)
         }
+    }
+
+    /** Swipe up = rear camera, swipe down = front camera. */
+    fun onSwipeCamera(up: Boolean) {
+        val wantFront = !up
+        // read the live setting: the gesture handler outlives recompositions, so a captured `front` would be stale
+        if (recording || busy || wantFront == settings.front.value) return
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        settings.front.set(wantFront)
+        say(if (wantFront) "Front camera" else "Rear camera")
     }
 
     fun stopRecording() {
@@ -566,12 +580,36 @@ fun CameraScreen(
             Box(
                 Modifier.fillMaxSize()
                     .pointerInput(Unit) {
-                        detectTransformGestures { _, _, z, _ ->
-                            if (z != 1f) {
-                                zoom = (zoom * z).coerceIn(zoomMin, zoomMax)
-                                engine.setZoom(zoom)
-                                zoomShown++
-                            }
+                        // two fingers pinch to zoom; one finger swiping up selects the rear camera, down the front
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var dx = 0f
+                            var dy = 0f
+                            var pinched = false
+                            var switched = false
+                            val threshold = 36.dp.toPx()
+                            do {
+                                val event = awaitPointerEvent()
+                                val down = event.changes.filter { it.pressed }
+                                if (down.size >= 2) {
+                                    pinched = true
+                                    val z = event.calculateZoom()
+                                    if (z != 1f) {
+                                        zoom = (zoom * z).coerceIn(zoomMin, zoomMax)
+                                        engine.setZoom(zoom)
+                                        zoomShown++
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                } else if (!pinched && !switched && down.size == 1) {
+                                    val d = down[0].position - down[0].previousPosition
+                                    dx += d.x; dy += d.y
+                                    if (kotlin.math.abs(dy) > threshold && kotlin.math.abs(dy) > 1.3f * kotlin.math.abs(dx)) {
+                                        switched = true
+                                        event.changes.forEach { it.consume() }
+                                        onSwipeCamera(dy < 0)
+                                    }
+                                }
+                            } while (event.changes.any { it.pressed })
                         }
                     }
                     .pointerInput(touchShoot, front) {
@@ -629,10 +667,10 @@ fun CameraScreen(
         Row(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().background(ScrimTop).statusBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            run {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 GlassButton(
                     if (front) Icons.Rounded.LightMode else if (flash) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
                     if (front) "Screen glow" else "Flash", { flash = !flash }, selected = flash,
@@ -666,7 +704,7 @@ fun CameraScreen(
                     )
                 }
             }
-            run {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 var importMenu by remember { mutableStateOf(false) }
                 Box {
                     GlassButton(Icons.Rounded.PhotoLibrary, "Edit or collage", { importMenu = true })
@@ -803,11 +841,12 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ToolTab(Icons.Rounded.RestartAlt, "Reset", false, { params = EffectParams(); say("Effects reset") }, Modifier.width(68.dp))
                 ToolTab(Icons.Rounded.Face, "Beauty", panel == Panel.BEAUTY, { panel = if (panel == Panel.BEAUTY) null else Panel.BEAUTY }, Modifier.width(68.dp))
                 ToolTab(Icons.Rounded.Brush, "Makeup", panel == Panel.MAKEUP, { panel = if (panel == Panel.MAKEUP) null else Panel.MAKEUP }, Modifier.width(68.dp))
                 ToolTab(Icons.Rounded.FilterVintage, "Filters", panel == Panel.FILTERS, { panel = if (panel == Panel.FILTERS) null else Panel.FILTERS }, Modifier.width(68.dp))
                 ToolTab(Icons.Rounded.AutoAwesome, "Looks", panel == Panel.LOOKS, { panel = if (panel == Panel.LOOKS) null else Panel.LOOKS }, Modifier.width(68.dp))
-                ToolTab(Icons.Rounded.RestartAlt, "Reset", false, { params = EffectParams(); say("Effects reset") }, Modifier.width(68.dp))
+                ToolTab(Icons.Rounded.Wallpaper, "Background", panel == Panel.BACKGROUND, { panel = if (panel == Panel.BACKGROUND) null else Panel.BACKGROUND }, Modifier.width(68.dp))
                 ToolTab(Icons.Rounded.Tune, "Capture", panel == Panel.CAPTURE, { panel = if (panel == Panel.CAPTURE) null else Panel.CAPTURE }, Modifier.width(68.dp))
                 ToolTab(
                     Icons.Rounded.Compare, "Compare", compare, null,
@@ -819,7 +858,6 @@ fun CameraScreen(
                         })
                     },
                 )
-                ToolTab(Icons.Rounded.Wallpaper, "Background", panel == Panel.BACKGROUND, { panel = if (panel == Panel.BACKGROUND) null else Panel.BACKGROUND }, Modifier.width(68.dp))
             }
 
             // mode switch

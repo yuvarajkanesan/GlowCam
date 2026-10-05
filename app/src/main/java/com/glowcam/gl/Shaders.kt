@@ -134,22 +134,26 @@ float matte(vec2 q, out vec3 fgEst) {
     int n = 12 / uLod;
     float wsum = 1.0;
     float asum = m0;
-    vec3 fsum = c0 * m0;
-    float fw = m0;
+    // the clean foreground colour comes only from pixels that are surely inside the person
+    float f0 = smoothstep(0.8, 1.0, m0);
+    vec3 fsum = c0 * f0;
+    float fw = f0;
     for (int i = 0; i < 12; i++) {
         if (i >= n) break;
-        vec2 o = disc(i, n) * 4.0;
+        vec2 o = disc(i, n) * 5.0;
         float mi = texture(uMask, mc + o * ts).r;
         vec3 ci = src(vec2(q.x + o.x * ts.x, q.y - o.y * ts.y));
         vec3 d = ci - c0;
         float w = exp(-dot(d, d) * 18.0);
         wsum += w;
         asum += w * mi;
-        fsum += w * mi * ci;
-        fw += w * mi;
+        float fi = smoothstep(0.8, 1.0, mi);
+        fsum += w * fi * ci;
+        fw += w * fi;
     }
-    fgEst = fsum / max(fw, 1e-3);
-    return smoothstep(0.30, 0.72, asum / wsum);
+    fgEst = fw > 0.05 ? fsum / fw : c0;
+    // a crisper cut that sits a touch inside the person's outline, so no old background is left on the rim
+    return smoothstep(0.44, 0.68, asum / wsum);
 }
 
 float hash1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
@@ -497,8 +501,7 @@ void main() {
             bgc = proceduralBg(uBgMode, vOut);
         }
         float edge = a * (1.0 - a) * 4.0;                 // 1 at the middle of the edge, 0 inside / outside
-        vec3 fgc = c + (fgEst - raw) * edge * 0.75;       // take the old background's colour out of the rim
-        fgc = fgc + (bgc - fgc) * edge * 0.22;            // soft light wrap from the new background
+        vec3 fgc = c + (fgEst - raw) * min(edge * 1.6, 1.0); // replace the rim colour with the person's own colour (no halo)
         fgc *= mix(vec3(1.0), 0.85 + 0.3 * bgc, 0.12);    // match overall tone to the new scene
         c = mix(bgc, clamp(fgc, 0.0, 1.0), a);
     }

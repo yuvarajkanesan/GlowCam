@@ -61,7 +61,7 @@ import kotlin.math.roundToInt
 fun GlassButton(
     icon: ImageVector,
     description: String,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     badge: String? = null,
@@ -74,7 +74,8 @@ fun GlassButton(
             .size(size)
             .clip(CircleShape)
             .background(bg)
-            .clickable(enabled = enabled, onClick = onClick),
+            // a null onClick leaves touches free for a parent's own gesture (e.g. press and hold)
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, description, tint = Color.White.copy(alpha = if (enabled) 1f else 0.4f), modifier = Modifier.size(size * 0.5f))
@@ -291,4 +292,28 @@ fun MegapixelButton(mp: Int, onClick: () -> Unit, modifier: Modifier = Modifier,
         Text(mp.toString(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp)
         Text("MP", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 10.sp)
     }
+}
+
+/**
+ * Leaving with unsaved work: asks first. Returns a function to call instead of leaving directly;
+ * it leaves at once when there is nothing to lose. Also catches the system back button.
+ */
+@Composable
+fun rememberLeaveGuard(hasChanges: Boolean, onLeave: () -> Unit): () -> Unit {
+    var ask by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = hasChanges) { ask = true }
+    if (ask) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = false },
+            title = { Text("Discard changes?") },
+            text = { Text("Your changes haven't been saved and will be lost if you leave now.", fontSize = 14.sp) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { ask = false; onLeave() }) { Text("Discard") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { ask = false }) { Text("Keep editing") }
+            },
+        )
+    }
+    return { if (hasChanges) ask = true else onLeave() }
 }
